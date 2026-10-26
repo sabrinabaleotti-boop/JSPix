@@ -1,0 +1,113 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Tokens extraídos do Sharpify (shadcn-style, RGB sem vírgula) */
+:root {
+  --background: 249 249 249;
+  --foreground: 17 34 63;
+  --card: 255 255 255;
+  --card-foreground: 17 34 63;
+  --popover: 255 255 255;
+  --popover-foreground: 17 34 63;
+  --primary: 46 124 213;
+  --primary-foreground: 249 249 249;
+  --secondary: 242 246 250;
+  --secondary-foreground: 17 34 63;
+  --muted: 242 246 250;
+  --muted-foreground: 95 112 132;
+  --accent: 234 243 253;
+  --accent-foreground: 17 34 63;
+  --destructive: 255 72 72;
+  --destructive-foreground: 250 250 250;
+  --border: 220 228 236;
+  --input: 220 228 236;
+  --ring: 0 132 255;
+  --radius: 1rem;
+  --chart-1: 46 124 213;
+  --chart-2: 132 177 238;
+  --chart-3: 18 116 174;
+  --chart-4: 0 132 255;
+  --chart-5: 18 50 69;
+  --success: 46 204 113;
+  --warning: 245 165 36;
+  --sidebar: 255 255 255;
+}
+
+.dark {
+  --background: 11 11 12;
+  --foreground: 250 250 250;
+  --card: 15 15 16;
+  --card-foreground: 250 250 250;
+  --popover: 11 11 12;
+  --popover-foreground: 250 250 250;
+  --primary: 41 120 255;
+  --primary-foreground: 255 255 255;
+  --secondary: 15 15 16;
+  --secondary-foreground: 250 250 250;
+  --muted: 26 26 28;
+  --muted-foreground: 164 164 164;
+  --accent: 38 38 43;
+  --accent-foreground: 250 250 250;
+  --destructive: 255 61 61;
+  --destructive-foreground: 250 250 250;
+  --border: 30 30 30;
+  --input: 15 15 16;
+  --ring: 214 214 214;
+  --chart-1: 51 77 255;
+  --chart-2: 255 51 136;
+  --chart-3: 222 178 51;
+  --chart-4: 204 102 255;
+  --chart-5: 73 183 92;
+  --sidebar: 6 6 6;
+}
+
+@theme inline {
+  --color-background: rgb(var(--background));
+  --color-foreground: rgb(var(--foreground));
+  --color-card: rgb(var(--card));
+  --color-card-foreground: rgb(var(--card-foreground));
+  --color-popover: rgb(var(--popover));
+  --color-popover-foreground: rgb(var(--popover-foreground));
+  --color-primary: rgb(var(--primary));
+  --color-primary-foreground: rgb(var(--primary-foreground));
+  --color-secondary: rgb(var(--secondary));
+  --color-secondary-foreground: rgb(var(--secondary-foreground));
+  --color-muted: rgb(var(--muted));
+  --color-muted-foreground: rgb(var(--muted-foreground));
+  --color-accent: rgb(var(--accent));
+  --color-accent-foreground: rgb(var(--accent-foreground));
+  --color-destructive: rgb(var(--destructive));
+  --color-destructive-foreground: rgb(var(--destructive-foreground));
+  --color-border: rgb(var(--border));
+  --color-input: rgb(var(--input));
+  --color-ring: rgb(var(--ring));
+  --color-success: rgb(var(--success));
+  --color-warning: rgb(var(--warning));
+  --color-sidebar: rgb(var(--sidebar));
+  --color-chart-1: rgb(var(--chart-1));
+  --color-chart-2: rgb(var(--chart-2));
+  --color-chart-3: rgb(var(--chart-3));
+  --color-chart-4: rgb(var(--chart-4));
+  --color-chart-5: rgb(var(--chart-5));
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 4px);
+  --radius-sm: calc(var(--radius) - 8px);
+  --font-sans: var(--font-inter), system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, monospace;
+}
+
+* {
+  border-color: var(--color-border);
+}
+
+body {
+  background: var(--color-background);
+  color: var(--color-foreground);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}

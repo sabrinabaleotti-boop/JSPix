@@ -1,0 +1,153 @@
+import { requireAdmin } from "@/lib/admin";
+import { headers } from "next/headers";
+import { KeyRound, RotateCw } from "lucide-react";
+import { SubmitButton } from "@/components/admin/form";
+import { PageHeader, Td, Th } from "@/components/admin/page-header";
+import { CopyField } from "@/components/admin/copy-field";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { db } from "@/lib/db";
+import { getSettings } from "@/lib/settings";
+import { decryptSecret } from "@/lib/crypto";
+import { AdminForm } from "@/components/admin/form";
+import { Input, Label } from "@/components/ui/input";
+import { getLegacyWebhookSecret } from "@/lib/legacy";
+import { generateWebhookCredentials, reprocessWebhookEvent, saveLegacyWebhookSecret } from "@/app/admin/actions";
+
+export const metadata = { title: "Webhook" };
+
+const EVENTS = ["order.paid", "order.payment_failed", "order.canceled", "charge.paid", "charge.payment_failed", "charge.refunded"];
+
+export default async function WebhookPage() {
+  await requireAdmin();
+  const h = await headers();
+  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
+  const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
+  const url = `${proto}://${host}/api/webhooks/pagarme`;
+
+  const s = await getSettings(["webhook_user", "webhook_pass_enc"]);
+  let password = "";
+  try {
+    password = s.webhook_pass_enc ? decryptSecret(s.webhook_pass_enc) : "";
+  } catch {
+    password = "";
+  }
+  const configured = !!(s.webhook_user && password);
+  const [events, legacySecret] = await Promise.all([db.webhookEvent.findMany({ orderBy: { receivedAt: "desc" }, take: 50 }), getLegacyWebhookSecret()]);
+
+  return (
+    <div className="mx-auto max-w-4xl space-y-5">
+      <PageHeader title="Webhook" description="A gateway avisa o JPix quando um Pix é pago, e o status muda na hora." />
+
+      <Card>
+        <CardHeader>
+          <div>
+            <CardTitle>Legacy Ecom</CardTitle>
+            <CardDescription>
+              Não precisa cadastrar nada: o JPix envia o endereço do webhook em cada cobrança, com um token secreto. Ao receber um evento, o JPix consulta a
+              Legacy para confirmar o status antes de marcar como pago.
+            </CardDescription>
+          </div>
+          <Badge variant="success">Automático</Badge>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <CopyField label="Endereço usado nas cobranças" value={`${proto}://${host}/api/webhooks/legacy?token=…`} />
+          <AdminForm action={saveLegacyWebhookSecret} submitLabel={legacySecret ? "Atualizar segredo" : "Salvar segredo"}>
+            <div>
+              <Label htmlFor="webhookSecret">Segredo de assinatura (opcional)</Label>
+              <Input id="webhookSecret" name="webhookSecret" type="password" autoComplete="off" placeholder="whsec_..." className="font-mono" />
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                {legacySecret
+                  ? "Assinatura ativa: eventos sem assinatura válida são recusados. Salve vazio para desligar."
+                  : "Ative a assinatura no painel da Legacy primeiro, depois cole aqui o segredo whsec_ gerado. Se salvar antes de ativar lá, os eventos serão recusados."}
+              </p>
+            </div>
+          </AdminForm>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <div>
+            <CardTitle>Pagar.me</CardTitle>
+            <CardDescription>Em dash.pagar.me, Configurações, Webhooks, crie um webhook com estes dados.</CardDescription>
+          </div>
+          {configured ? <Badge variant="success">Configurado</Badge> : <Badge variant="warning">Pendente</Badge>}
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <CopyField label="URL" value={url} />
+          {configured ? (
+            <div className="grid gap-4 sm:grid-cols-2">
+              <CopyField label="Usuário (autenticação básica)" value={s.webhook_user} />
+              <CopyField label="Senha (autenticação básica)" value={password} secret />
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">Gere as credenciais. Sem elas o endpoint recusa todos os eventos.</p>
+          )}
+          <div>
+            <p className="mb-1.5 text-xs font-medium text-muted-foreground">Eventos para marcar</p>
+            <div className="flex flex-wrap gap-1.5">
+              {EVENTS.map((e) => (
+                <Badge key={e} variant="outline" className="font-mono">
+                  {e}
+                </Badge>
+              ))}
+            </div>
+          </div>
+          <form action={generateWebhookCredentials}>
+            <SubmitButton variant={configured ? "outline" : "primary"}>
+              <KeyRound className="h-4 w-4" /> {configured ? "Gerar nova senha" : "Gerar credenciais"}
+            </SubmitButton>
+            {configured && <p className="mt-1.5 text-[11px] text-muted-foreground">Ao gerar uma nova senha, atualize também na Pagar.me.</p>}
+          </form>
+        </CardContent>
+      </Card>
+
+      <Card className="overflow-hidden">
+        <CardHeader>
+          <div>
+            <CardTitle>Últimos eventos recebidos</CardTitle>
+            <CardDescription>Os 50 mais recentes.</CardDescription>
+          </div>
+        </CardHeader>
+        <div className="mt-3 overflow-x-auto">
+          <table className="w-full">
+            <thead className="border-y bg-muted/40">
+              <tr>
+                <Th>Recebido</Th>
+                <Th>Tipo</Th>
+                <Th>Resultado</Th>
+                <Th className="text-right">Ação</Th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {events.map((e) => (
+                <tr key={e.id}>
+                  <Td className="text-muted-foreground">{e.receivedAt.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "medium" })}</Td>
+                  <Td className="font-mono text-xs">{e.type}</Td>
+                  <Td>
+                    {e.processed && !e.error && <Badge variant="success">Processado</Badge>}
+                    {e.processed && e.error && <span className="text-xs text-muted-foreground">{e.error}</span>}
+                    {!e.processed && <span className="text-xs text-destructive">{e.error ?? "Não processado"}</span>}
+                  </Td>
+                  <Td className="text-right">
+                    <form action={reprocessWebhookEvent.bind(null, e.id)}>
+                      <SubmitButton variant="ghost" className="h-8 px-2.5 text-xs">
+                        <RotateCw className="h-3.5 w-3.5" /> Reprocessar
+                      </SubmitButton>
+                    </form>
+                  </Td>
+                </tr>
+              ))}
+              {events.length === 0 && (
+                <tr>
+                  <Td className="py-10 text-center text-muted-foreground">Nenhum evento recebido ainda.</Td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
+  );
+}

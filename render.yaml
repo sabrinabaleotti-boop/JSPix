@@ -1,0 +1,32 @@
+services:
+  - type: web
+    name: jpix
+    runtime: node
+    plan: free
+    region: oregon
+    buildCommand: npm ci && npx prisma migrate deploy && npm run build
+    startCommand: npm run start
+    healthCheckPath: /
+    envVars:
+      - key: NODE_VERSION
+        value: "24"
+      - key: DATABASE_URL
+        sync: false
+      - key: DIRECT_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: SECRETS_ENCRYPTION_KEY
+        sync: false
+      - key: PAGARME_SECRET_KEY
+        sync: false
+      - key: PAGARME_ENV
+        value: test
+      - key: PUBLIC_URL
+        value: https://jpix.onrender.com
+      - key: LEGACY_PUBLIC_KEY
+        sync: false
+      - key: LEGACY_SECRET_KEY
+        sync: false
+      - key: LEGACY_WEBHOOK_SECRET
+        sync: false

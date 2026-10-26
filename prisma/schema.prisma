@@ -1,0 +1,126 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model Admin {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  totpSecret   String?
+  createdAt    DateTime @default(now())
+}
+
+model Client {
+  id               String   @id @default(cuid())
+  name             String
+  accessCode       String   @unique
+  active           Boolean  @default(true)
+  feePercent       Decimal? @db.Decimal(5, 2)
+  feeFixedCents    Int?
+  defaultExpiryMin Int?
+  minAmountCents   Int?
+  maxAmountCents   Int?
+  payoutPixKey     String?
+  payoutPixKeyType String?
+  payerName        String?
+  payerCpf         String?
+  payerEmail       String?
+  payerPhone       String?
+  payerStreet       String?
+  payerNumber       String?
+  payerComplement   String?
+  payerNeighborhood String?
+  payerZip          String?
+  payerCity         String?
+  payerState        String?
+  /// null = usa o split padrão; {"mode":"none"} = sem split; {"mode":"custom","rules":[...]} = split próprio
+  splitConfig       Json?
+  /// Índice atual na pool de testes (0-231), para rotação automática de CPFs
+  testPoolIndex     Int      @default(0)
+  charges          Charge[]
+  payouts          Payout[]
+  createdAt        DateTime @default(now())
+}
+
+enum ChargeStatus {
+  pending
+  paid
+  expired
+  canceled
+  failed
+  refunded
+}
+
+model Charge {
+  id              String       @id @default(cuid())
+  clientId        String
+  client          Client       @relation(fields: [clientId], references: [id])
+  amountCents     Int
+  description     String?
+  payerName       String
+  payerCpf        String
+  payerEmail      String
+  payerPhone      String
+  status          ChargeStatus @default(pending)
+  /// pagarme | legacy | simulated
+  gateway         String       @default("pagarme")
+  /// pedido (Pagar.me) ou payin (Legacy)
+  gatewayId       String?      @unique
+  /// charge da Pagar.me
+  gatewayChargeId String?
+  qrCode          String?
+  qrCodeUrl       String?
+  expiresAt       DateTime
+  paidAt          DateTime?
+  feePercent      Decimal      @db.Decimal(5, 2)
+  feeFixedCents   Int          @default(0)
+  ourFeeCents     Int          @default(0)
+  gatewayFeeCents Int?
+  /// Regras de split enviadas à gateway nesta cobrança (cópia para conferência)
+  splitRules      Json?
+  createdAt       DateTime     @default(now())
+
+  @@index([clientId, status, createdAt])
+}
+
+model Payout {
+  id            String   @id @default(cuid())
+  clientId      String
+  client        Client   @relation(fields: [clientId], references: [id])
+  amountCents   Int
+  paidAt        DateTime
+  note          String?
+  receiptUrl    String?
+  /// manual | legacy
+  method        String   @default("manual")
+  /// completed | pending | processing | awaiting_approval | failed
+  status        String   @default("completed")
+  gatewayId     String?  @unique
+  pixKey        String?
+  pixKeyType    String?
+  failureReason String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @default(now()) @updatedAt
+
+  @@index([clientId, status])
+}
+
+model WebhookEvent {
+  id         String   @id
+  type       String
+  payload    Json
+  processed  Boolean  @default(false)
+  error      String?
+  receivedAt DateTime @default(now())
+}
+
+model Setting {
+  key   String @id
+  value String
+}
