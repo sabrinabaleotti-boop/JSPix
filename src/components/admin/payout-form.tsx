@@ -96,7 +96,7 @@ export function PayoutForm({ clients, initialClientId, legacyReady, today }: { c
           <input type="checkbox" name="confirm" className="mt-0.5 h-4 w-4 accent-[rgb(var(--primary))]" />
           <span>
             Confirmo o envio de <strong>{amount ? `R$ ${amount}` : "—"}</strong> do saldo da Legacy para a chave <strong className="font-mono">{client?.pixKey}</strong>. O
-            dinheiro sai na hora e não dá para desfazer pelo JPix.
+            dinheiro sai na hora e não dá para desfazer pelo JSPix.
           </span>
         </label>
       )}

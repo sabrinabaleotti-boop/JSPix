@@ -45,6 +45,7 @@ model Client {
   testPoolIndex     Int      @default(0)
   charges          Charge[]
   payouts          Payout[]
+  withdrawals      Withdrawal[]
   createdAt        DateTime @default(now())
 }
 
@@ -109,6 +110,26 @@ model Payout {
   updatedAt     DateTime @default(now()) @updatedAt
 
   @@index([clientId, status])
+}
+
+/// Saque do saldo de um recebedor Pagar.me para a conta bancária dele, pedido pelo cliente (ou pelo admin, sem clientId).
+model Withdrawal {
+  id                   String    @id @default(cuid())
+  clientId             String?
+  client               Client?   @relation(fields: [clientId], references: [id])
+  recipientId          String
+  recipientName        String
+  amountCents          Int
+  feeCents             Int       @default(0)
+  /// pending_transfer | processing | transferred | failed | canceled
+  status               String    @default("pending_transfer")
+  gatewayId            String    @unique
+  fundingEstimatedDate DateTime?
+  failureReason        String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @default(now()) @updatedAt
+
+  @@index([clientId, createdAt])
 }
 
 model WebhookEvent {

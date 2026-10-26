@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Copy, QrCode, Share2, CircleCheck, Clock, XCircle } from "lucide-react";
+import { Check, Copy, QrCode, Share2, CircleCheck, Clock, XCircle, ArrowLeft, History } from "lucide-react";
 import Link from "next/link";
 import { QRCodeSVG } from "qrcode.react";
 import { useEffect, useState } from "react";
@@ -73,17 +73,21 @@ export function PixView({ initial }: { initial: ChargeDTO }) {
   }
 
   const m = meta[charge.status];
-  const barColor = charge.status === "paid" ? "bg-success" : !pending ? "bg-muted-foreground/40" : pct < 25 ? "bg-warning" : "bg-primary";
+  const barColor = charge.status === "paid" ? "bg-success" : !pending ? "bg-muted-foreground/40" : pct < 25 ? "bg-warning" : "gradient-primary";
 
   return (
     <div className="mx-auto max-w-md space-y-4">
-      <Card className={cn("overflow-hidden transition-colors", charge.status === "paid" && "border-success/50")}>
-        <div className={cn("h-1.5 w-full bg-muted")}>
-          <div className={cn("h-full transition-all", barColor)} style={{ width: `${charge.status === "paid" ? 100 : pct}%` }} />
+      <Link href="/app" className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground">
+        <ArrowLeft className="h-3.5 w-3.5" /> Voltar ao painel
+      </Link>
+
+      <Card className={cn("overflow-hidden transition-all duration-500 animate-scale-in", charge.status === "paid" && "border-success/50 shadow-[0_24px_50px_-24px_rgb(16_185_129/0.5)]")}>
+        <div className="h-1.5 w-full bg-muted">
+          <div className={cn("h-full transition-all duration-1000 ease-linear", barColor)} style={{ width: `${charge.status === "paid" ? 100 : pct}%` }} />
         </div>
-        <CardContent className="space-y-5 text-center">
+        <CardContent className="space-y-5 p-6 text-center">
           <div className="flex items-center justify-between">
-            <Badge variant={m.variant} className="text-xs">
+            <Badge variant={m.variant} dot pulse={pending} className="text-xs">
               {charge.status === "paid" ? <CircleCheck className="h-3.5 w-3.5" /> : charge.status === "pending" ? <Clock className="h-3.5 w-3.5" /> : <XCircle className="h-3.5 w-3.5" />}
               {m.label}
             </Badge>
@@ -91,29 +95,31 @@ export function PixView({ initial }: { initial: ChargeDTO }) {
           </div>
 
           <div>
-            <p className="text-xs text-muted-foreground">{charge.description || "Pagamento via Pix"}</p>
-            <p className="mt-1 text-[34px] font-bold leading-none tracking-tight tabular">{maskBRL(charge.amountCents)}</p>
+            <p className="text-xs font-medium text-muted-foreground">{charge.description || "Pagamento via Pix"}</p>
+            <p className="mt-1 text-[38px] font-bold leading-none tracking-tight tabular">{maskBRL(charge.amountCents)}</p>
           </div>
 
           {charge.status === "paid" ? (
-            <div className="grid place-items-center py-6">
-              <span className="grid h-24 w-24 place-items-center rounded-full bg-success/15 text-success">
-                <Check className="h-12 w-12" strokeWidth={3} />
+            <div className="grid place-items-center py-4">
+              <span className="relative grid h-24 w-24 place-items-center rounded-full bg-success/12 text-success">
+                <span className="absolute inset-0 rounded-full bg-success/30 animate-pulse-ring" />
+                <span className="absolute inset-0 rounded-full bg-success/20 animate-pulse-ring [animation-delay:600ms]" />
+                <Check className="h-12 w-12 animate-pop" strokeWidth={3} />
               </span>
-              <p className="mt-4 text-sm font-medium">Pagamento confirmado</p>
-              {charge.paidAt && (
-                <p className="text-xs text-muted-foreground">{new Date(charge.paidAt).toLocaleString("pt-BR")}</p>
-              )}
+              <p className="mt-5 text-base font-bold">Pagamento confirmado</p>
+              {charge.paidAt && <p className="text-xs text-muted-foreground">{new Date(charge.paidAt).toLocaleString("pt-BR")}</p>}
               {charge.netCents !== undefined && charge.netCents !== charge.amountCents && (
-                <div className="mt-3 rounded-md bg-muted px-4 py-2 text-center">
-                  <p className="text-[11px] text-muted-foreground">Valor líquido (após taxa de {charge.feePercent.toFixed(0)}%)</p>
-                  <p className="text-lg font-bold tabular">{maskBRL(charge.netCents)}</p>
+                <div className="mt-4 w-full rounded-xl bg-muted/60 px-4 py-3 text-center">
+                  <p className="text-[11px] text-muted-foreground">Valor líquido (após taxa de {charge.feePercent.toFixed(2).replace(".", ",")}%)</p>
+                  <p className="text-xl font-bold tabular">{maskBRL(charge.netCents)}</p>
                 </div>
               )}
             </div>
           ) : (
-            <div className={cn("mx-auto w-fit rounded-xl bg-white p-3", !pending && "opacity-40 grayscale")}>
-              {charge.qrCode ? <QRCodeSVG value={charge.qrCode} size={208} level="M" /> : <QrCode className="h-52 w-52 text-muted" />}
+            <div className={cn("mx-auto w-fit rounded-2xl p-[3px] transition-all duration-500", pending ? "gradient-primary shadow-primary" : "bg-muted")}>
+              <div className={cn("rounded-[13px] bg-white p-3", !pending && "opacity-40 grayscale")}>
+                {charge.qrCode ? <QRCodeSVG value={charge.qrCode} size={208} level="M" /> : <QrCode className="h-52 w-52 text-muted" />}
+              </div>
             </div>
           )}
 
@@ -125,13 +131,11 @@ export function PixView({ initial }: { initial: ChargeDTO }) {
           {charge.status === "expired" && <p className="text-sm text-muted-foreground">Este Pix expirou. Gere uma nova cobrança.</p>}
 
           {pending && charge.qrCode && (
-            <div className="space-y-2">
-              <div className="rounded-md border bg-muted px-3 py-2 text-left font-mono text-[11px] leading-snug break-all text-muted-foreground">
-                {charge.qrCode}
-              </div>
+            <div className="space-y-2.5">
+              <div className="rounded-xl border bg-muted/60 px-3 py-2.5 text-left font-mono text-[11px] leading-snug break-all text-muted-foreground">{charge.qrCode}</div>
               <div className="grid grid-cols-2 gap-2">
-                <Button type="button" onClick={copy} variant={copied ? "secondary" : "primary"}>
-                  {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                <Button type="button" onClick={copy} variant={copied ? "secondary" : "primary"} className={cn(copied && "bg-success/12 text-success")}>
+                  {copied ? <Check className="h-4 w-4 animate-pop" /> : <Copy className="h-4 w-4" />}
                   {copied ? "Copiado!" : "Copiar código"}
                 </Button>
                 <Button type="button" variant="outline" onClick={share}>
@@ -143,12 +147,16 @@ export function PixView({ initial }: { initial: ChargeDTO }) {
         </CardContent>
       </Card>
 
-      <div className="flex gap-2">
+      <div className="flex gap-2 animate-fade-up [animation-delay:150ms]">
         <Link href="/app/gerar" className="flex-1">
-          <Button variant="outline" className="w-full">Nova cobrança</Button>
+          <Button variant="outline" className="w-full">
+            <QrCode className="h-4 w-4" /> Nova cobrança
+          </Button>
         </Link>
         <Link href="/app/historico" className="flex-1">
-          <Button variant="ghost" className="w-full">Ver histórico</Button>
+          <Button variant="ghost" className="w-full">
+            <History className="h-4 w-4" /> Ver histórico
+          </Button>
         </Link>
       </div>
 

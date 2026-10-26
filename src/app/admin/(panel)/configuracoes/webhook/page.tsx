@@ -37,14 +37,14 @@ export default async function WebhookPage() {
 
   return (
     <div className="mx-auto max-w-4xl space-y-5">
-      <PageHeader title="Webhook" description="A gateway avisa o JPix quando um Pix é pago, e o status muda na hora." />
+      <PageHeader title="Webhook" description="A gateway avisa o JSPix quando um Pix é pago, e o status muda na hora." />
 
       <Card>
         <CardHeader>
           <div>
             <CardTitle>Legacy Ecom</CardTitle>
             <CardDescription>
-              Não precisa cadastrar nada: o JPix envia o endereço do webhook em cada cobrança, com um token secreto. Ao receber um evento, o JPix consulta a
+              Não precisa cadastrar nada: o JSPix envia o endereço do webhook em cada cobrança, com um token secreto. Ao receber um evento, o JSPix consulta a
               Legacy para confirmar o status antes de marcar como pago.
             </CardDescription>
           </div>

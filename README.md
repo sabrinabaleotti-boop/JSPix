@@ -1,4 +1,4 @@
-# JPix
+# JSPix
 
 Gerador de cobranças Pix via Pagar.me ou Legacy Ecom, com acesso por código de cliente e painel administrativo. Especificação completa em [IDEIA.md](IDEIA.md).
 

@@ -49,14 +49,14 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
         </Link>
       </PageHeader>
 
-      <nav className="flex gap-1 overflow-x-auto rounded-lg border bg-card p-1">
+      <nav className="flex gap-1 overflow-x-auto rounded-2xl border bg-card p-1 shadow-card">
         {Object.entries(PERIODS).map(([k, label]) => (
           <Link
             key={k}
             href={`/admin/financeiro?periodo=${k}`}
             className={cn(
-              "shrink-0 rounded-md px-3 py-1.5 text-xs font-medium",
-              range.key === k ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent hover:text-foreground",
+              "shrink-0 rounded-xl px-3.5 py-2 text-xs font-semibold transition-all duration-200",
+              range.key === k ? "gradient-primary text-white shadow-primary" : "text-muted-foreground hover:bg-accent hover:text-foreground",
             )}
           >
             {label}
@@ -65,10 +65,10 @@ export default async function FinanceiroPage({ searchParams }: { searchParams: P
       </nav>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard title="Volume pago" subtitle={`${totals.paidCount} pagamento${totals.paidCount === 1 ? "" : "s"}`} value={formatBRL(totals.grossCents)} icon={DollarSign} highlight />
-        <StatCard title="Sua receita" subtitle="Taxas cobradas dos clientes" value={formatBRL(totals.ourFeeCents)} icon={Percent} />
-        <StatCard title="Lucro" subtitle={`Receita menos ${formatBRL(totals.gatewayFeeCents)} da gateway`} value={formatBRL(totals.profitCents)} icon={TrendingUp} />
-        <StatCard title="A repassar" subtitle={`Repassado no período: ${formatBRL(totals.paidOutCents)}`} value={formatBRL(totals.balanceCents)} icon={Wallet} />
+        <StatCard title="Volume pago" subtitle={`${totals.paidCount} pagamento${totals.paidCount === 1 ? "" : "s"}`} cents={totals.grossCents} icon={DollarSign} highlight />
+        <StatCard title="Sua receita" subtitle="Taxas cobradas dos clientes" cents={totals.ourFeeCents} icon={Percent} />
+        <StatCard title="Lucro" subtitle={`Receita menos ${formatBRL(totals.gatewayFeeCents)} da gateway`} cents={totals.profitCents} icon={TrendingUp} />
+        <StatCard title="A repassar" subtitle={`Repassado no período: ${formatBRL(totals.paidOutCents)}`} cents={totals.balanceCents} icon={Wallet} />
       </div>
 
       {legacyBalance !== null && (

@@ -189,12 +189,35 @@ export type TransferResult = { id: string; status: string | null; amount: number
  * A Idempotency-Key evita saque duplicado em reenvio.
  */
 export async function createTransfer(recipientId: string, amountCents: number, idempotencyKey: string): Promise<TransferResult> {
-  const r = await request<{ id: string; status?: string; amount?: number; fee?: number; funding_estimated_date?: string }>(`/recipients/${encodeURIComponent(recipientId)}/transfers`, {
+  const r = await request<TransferResponse>(`/recipients/${encodeURIComponent(recipientId)}/transfers`, {
     method: "POST",
     headers: { "Idempotency-Key": idempotencyKey },
     body: JSON.stringify({ amount: amountCents }),
   });
-  return { id: r.id, status: r.status ?? null, amount: r.amount ?? amountCents, fee: r.fee ?? null, fundingEstimatedDate: r.funding_estimated_date ?? null };
+  return toTransferResult(r, amountCents);
+}
+
+type TransferResponse = { id: string; status?: string; amount?: number; fee?: number; funding_estimated_date?: string; failure_reason?: string };
+
+function toTransferResult(r: TransferResponse, fallbackAmount: number): TransferResult {
+  return { id: r.id, status: r.status ?? null, amount: r.amount ?? fallbackAmount, fee: r.fee ?? null, fundingEstimatedDate: r.funding_estimated_date ?? null };
+}
+
+/**
+ * Situação atual de um saque. A v5 expõe o saque do recebedor em /recipients/{id}/withdrawals/{id}
+ * (docs.pagar.me/reference/obter-saque); /transfers/{id} fica como alternativa.
+ */
+export async function getTransfer(recipientId: string, transferId: string, fallbackAmount = 0): Promise<TransferResult & { failureReason: string | null }> {
+  const rid = encodeURIComponent(recipientId);
+  const tid = encodeURIComponent(transferId);
+  let r: TransferResponse;
+  try {
+    r = await request<TransferResponse>(`/recipients/${rid}/withdrawals/${tid}`);
+  } catch (e) {
+    if (!(e instanceof PagarmeError) || e.status !== 404) throw e;
+    r = await request<TransferResponse>(`/transfers/${tid}`);
+  }
+  return { ...toTransferResult(r, fallbackAmount), failureReason: r.failure_reason ?? null };
 }
 
 /** Corpo no formato de docs.pagar.me/reference/criar-recebedor-1 (montado em recipient-input.ts). */

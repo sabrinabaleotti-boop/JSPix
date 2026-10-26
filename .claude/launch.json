@@ -1,7 +1,7 @@
 {
   "version": "0.0.1",
   "configurations": [
-    { "name": "jpix-dev", "runtimeExecutable": "npm", "runtimeArgs": ["run", "dev"], "port": 3000 },
-    { "name": "jpix-prod", "runtimeExecutable": "npm", "runtimeArgs": ["run", "start"], "port": 3000 }
+    { "name": "jspix-dev", "runtimeExecutable": "npm", "runtimeArgs": ["run", "dev"], "port": 3000 },
+    { "name": "jspix-prod", "runtimeExecutable": "npm", "runtimeArgs": ["run", "start"], "port": 3000 }
   ]
 }

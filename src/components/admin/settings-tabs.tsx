@@ -16,19 +16,22 @@ const tabs = [
 export function SettingsTabs() {
   const pathname = usePathname();
   return (
-    <nav className="mx-auto mb-5 flex max-w-4xl gap-1 overflow-x-auto rounded-lg border bg-card p-1">
-      {tabs.map((t) => (
-        <Link
-          key={t.href}
-          href={t.href}
-          className={cn(
-            "shrink-0 flex-1 rounded-md px-3 py-2 text-center text-sm font-medium transition-colors",
-            pathname.startsWith(t.href) ?"bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent hover:text-foreground",
-          )}
-        >
-          {t.label}
-        </Link>
-      ))}
+    <nav className="mx-auto mb-5 flex max-w-4xl gap-1 overflow-x-auto rounded-2xl border bg-card p-1 shadow-card animate-fade-up">
+      {tabs.map((t) => {
+        const active = pathname.startsWith(t.href);
+        return (
+          <Link
+            key={t.href}
+            href={t.href}
+            className={cn(
+              "shrink-0 flex-1 rounded-xl px-3 py-2 text-center text-sm font-semibold transition-all duration-200",
+              active ? "gradient-primary text-white shadow-primary" : "text-muted-foreground hover:bg-accent hover:text-foreground",
+            )}
+          >
+            {t.label}
+          </Link>
+        );
+      })}
     </nav>
   );
 }

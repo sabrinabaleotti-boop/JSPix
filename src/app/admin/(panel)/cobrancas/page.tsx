@@ -129,7 +129,7 @@ export default async function CobrancasPage({ searchParams }: { searchParams: Pr
                           </form>
                           <form action={adminCancelCharge.bind(null, c.id)}>
                             <SubmitButton variant="ghost" className="h-8 px-2.5 text-xs text-destructive">
-                              <X className="h-3.5 w-3.5" /> {c.gateway === "legacy" ? "Cancelar no JPix" : "Cancelar"}
+                              <X className="h-3.5 w-3.5" /> {c.gateway === "legacy" ? "Cancelar no JSPix" : "Cancelar"}
                             </SubmitButton>
                           </form>
                         </span>

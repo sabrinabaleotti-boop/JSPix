@@ -80,9 +80,24 @@ export function ChargeForm({
               value={cents ? maskBRL(cents) : ""}
               onChange={(e) => setCents(parseBRLToCents(e.target.value))}
               placeholder="R$ 0,00"
-              className="h-14 text-2xl font-semibold tabular"
+              className="h-16 text-3xl font-bold tabular"
             />
-            <p className="mt-1.5 text-[11px] text-muted-foreground">Mínimo {maskBRL(minAmountCents)}</p>
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              {[1000, 2500, 5000, 10000].map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => setCents(v)}
+                  className={cn(
+                    "rounded-full border px-3 py-1 text-xs font-semibold transition-colors",
+                    cents === v ? "border-primary bg-primary/10 text-primary" : "bg-card text-muted-foreground hover:border-primary/50 hover:text-primary",
+                  )}
+                >
+                  {maskBRL(v)}
+                </button>
+              ))}
+              <span className="ml-auto text-[11px] text-muted-foreground">Mínimo {maskBRL(minAmountCents)}</span>
+            </div>
           </div>
 
           <div>
@@ -110,8 +125,8 @@ export function ChargeForm({
                   key={v}
                   onClick={() => setExpiry(Number(v))}
                   className={cn(
-                    "h-10 rounded-md border text-sm font-medium transition-colors",
-                    expiry === v ? "border-primary bg-primary/10 text-primary" : "bg-card hover:bg-accent",
+                    "h-10 rounded-xl border text-sm font-semibold transition-all duration-200 press",
+                    expiry === v ? "border-primary gradient-primary text-white shadow-primary" : "bg-card text-muted-foreground hover:border-primary/40 hover:text-foreground",
                   )}
                 >
                   {label}
@@ -176,7 +191,7 @@ export function ChargeForm({
         {!editPayer && <div className="pb-5" />}
       </Card>
 
-      {error && <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>}
+      {error && <p className="rounded-xl bg-destructive/10 px-3 py-2 text-sm text-destructive animate-fade-up">{error}</p>}
 
       <Button size="lg" className="w-full" disabled={!canSubmit}>
         {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <QrCode className="h-4 w-4" />}

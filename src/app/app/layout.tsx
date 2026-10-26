@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
-import { AppSidebar, AppTabBar } from "@/components/layout/app-nav";
+import { AppMobileMenu, AppSidebar, AppTabBar } from "@/components/layout/app-nav";
+import { PageTransition } from "@/components/layout/page-transition";
 import { Topbar } from "@/components/layout/topbar";
 import { getClientId } from "@/lib/auth";
 import { db } from "@/lib/db";
@@ -20,8 +21,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <Topbar
           user={{ name: client.name, handle: `código ${client.accessCode}`, role: "CLIENTE" }}
           badge={`Taxa ${fee.toFixed(2).replace(".", ",")}%`}
+          menu={<AppMobileMenu />}
         />
-        <main className="flex-1 px-4 py-6 pb-24 md:px-6 md:pb-8">{children}</main>
+        <main className="flex-1 px-4 py-6 pb-28 md:px-8 md:py-8 md:pb-10">
+          <PageTransition>{children}</PageTransition>
+        </main>
       </div>
       <AppTabBar />
     </div>

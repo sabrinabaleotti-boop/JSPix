@@ -5,8 +5,9 @@ export function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElem
   return (
     <input
       className={cn(
-        "h-11 w-full rounded-md border bg-input px-3 text-sm text-foreground placeholder:text-muted-foreground",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:border-primary",
+        "h-11 w-full rounded-xl border bg-input px-3.5 text-sm text-foreground shadow-[0_1px_2px_rgb(15_23_42/0.04)] transition-all duration-200 placeholder:text-muted-foreground/70",
+        "hover:border-primary/40 focus-visible:outline-none focus-visible:border-primary focus-visible:ring-4 focus-visible:ring-primary/15",
+        "aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/15",
         "disabled:opacity-60",
         className,
       )}
@@ -16,5 +17,5 @@ export function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElem
 }
 
 export function Label({ className, ...props }: React.LabelHTMLAttributes<HTMLLabelElement>) {
-  return <label className={cn("mb-1.5 block text-xs font-medium text-muted-foreground", className)} {...props} />;
+  return <label className={cn("mb-1.5 block text-xs font-semibold text-muted-foreground", className)} {...props} />;
 }
