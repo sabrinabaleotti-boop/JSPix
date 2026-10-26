@@ -19,7 +19,7 @@ export default async function SaquePage() {
   const [{ recipients, error }, fee, withdrawals] = await Promise.all([
     configured ? loadWithdrawRecipients() : { recipients: [], error: "Saque indisponível no momento. Tente novamente em instantes." },
     getWithdrawFee(),
-    listWithdrawals(clientId),
+    listWithdrawals(clientId, 50, configured),
   ]);
   const inProgress = withdrawals.filter((w) => w.status === "pending_transfer" || w.status === "processing").length;
 

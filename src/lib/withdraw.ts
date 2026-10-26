@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { createTransfer, getRecipientBalance, getTransfer, listRecipientsCached, type TransferResult } from "@/lib/pagarme";
+import { createTransfer, getRecipientBalance, getTransfer, listRecipientsCached, listRecipientWithdrawals, type TransferResult } from "@/lib/pagarme";
 import { getSetting } from "@/lib/settings";
 import { formatBRL } from "@/lib/utils";
 import type { Withdrawal } from "@prisma/client";
@@ -119,16 +119,86 @@ async function recordWithdrawal(t: TransferResult, recipientId: string, clientId
 }
 
 const REFRESH_AFTER_MS = 60_000;
+const SYNC_EVERY_MS = 30_000;
+let lastSync = 0;
+
+/**
+ * Importa da Pagar.me os saques de todos os recebedores: os feitos antes do histórico existir, pelo painel da
+ * Pagar.me ou por outro sistema entram sem cliente (clientId null); os já conhecidos só têm o status atualizado.
+ * Roda no máximo a cada 30 s por processo e nunca derruba a página.
+ */
+export async function syncWithdrawalsFromPagarme(force = false) {
+  if (!force && Date.now() - lastSync < SYNC_EVERY_MS) return;
+  lastSync = Date.now();
+  try {
+    const recipients = await listRecipientsCached();
+    await Promise.all(
+      recipients.map(async (r) => {
+        const remote = await listRecipientWithdrawals(r.id).catch((e) => {
+          console.error("[withdraw] não foi possível listar saques do recebedor", r.id, (e as Error).message);
+          return [];
+        });
+        for (const w of remote) {
+          const status = normalizeWithdrawalStatus(w.status);
+          const createdAt = w.createdAt ? new Date(w.createdAt) : null;
+          const data = {
+            status,
+            ...(w.fee != null ? { feeCents: w.fee } : {}),
+            ...(w.fundingEstimatedDate ? { fundingEstimatedDate: new Date(w.fundingEstimatedDate) } : {}),
+            ...(status === "failed" && w.failureReason ? { failureReason: w.failureReason } : {}),
+          };
+          const known = await db.withdrawal.findUnique({ where: { gatewayId: w.id }, select: { id: true } });
+          if (known) {
+            await db.withdrawal.update({ where: { id: known.id }, data });
+            continue;
+          }
+          // A Pagar.me pode devolver o mesmo saque com outro id (tr_ x wd_): casa pelo recebedor, valor e horário.
+          const twin = createdAt
+            ? await db.withdrawal.findFirst({
+                where: { recipientId: r.id, amountCents: w.amount, createdAt: { gte: new Date(createdAt.getTime() - 180_000), lte: new Date(createdAt.getTime() + 180_000) } },
+                select: { id: true },
+              })
+            : null;
+          if (twin) {
+            await db.withdrawal.update({ where: { id: twin.id }, data });
+            continue;
+          }
+          await db.withdrawal.create({
+            data: {
+              clientId: null,
+              recipientId: r.id,
+              recipientName: r.name,
+              amountCents: w.amount,
+              feeCents: w.fee ?? 0,
+              status,
+              gatewayId: w.id,
+              fundingEstimatedDate: w.fundingEstimatedDate ? new Date(w.fundingEstimatedDate) : null,
+              failureReason: status === "failed" ? w.failureReason : null,
+              ...(createdAt ? { createdAt } : {}),
+            },
+          });
+        }
+      }),
+    );
+  } catch (e) {
+    console.error("[withdraw] sincronização com a Pagar.me falhou:", (e as Error).message);
+  }
+}
 
 export type WithdrawalRow = Withdrawal & { client: { name: string } | null };
 
+/** O cliente vê os saques que pediu e os importados da Pagar.me (sem cliente). */
+export function withdrawalScope(clientId: string | null) {
+  return clientId ? { OR: [{ clientId }, { clientId: null }] } : {};
+}
+
 /**
- * Histórico de saques (do cliente ou, sem clientId, de toda a conta). Os que ainda não terminaram são reconsultados
- * na Pagar.me, no máximo uma vez por minuto cada, para o status acompanhar o banco.
+ * Histórico de saques (do cliente ou, sem clientId, de toda a conta). Com `sync`, importa antes o que existe na
+ * Pagar.me. Os que ainda não terminaram são reconsultados, no máximo uma vez por minuto cada.
  */
-export async function listWithdrawals(clientId: string | null, take = 50): Promise<WithdrawalRow[]> {
-  const where = clientId ? { clientId } : {};
-  const items = await db.withdrawal.findMany({ where, orderBy: { createdAt: "desc" }, take, include: { client: { select: { name: true } } } });
+export async function listWithdrawals(clientId: string | null, take = 50, sync = false): Promise<WithdrawalRow[]> {
+  if (sync) await syncWithdrawalsFromPagarme();
+  const items = await db.withdrawal.findMany({ where: withdrawalScope(clientId), orderBy: { createdAt: "desc" }, take, include: { client: { select: { name: true } } } });
   const stale = items.filter((w) => !FINAL_WITHDRAWAL_STATUSES.includes(w.status as WithdrawalStatus) && Date.now() - w.updatedAt.getTime() > REFRESH_AFTER_MS).slice(0, 10);
   if (stale.length === 0) return items;
   const refreshed = await Promise.all(stale.map((w) => refreshWithdrawal(w).then((r) => ({ ...r, client: w.client })).catch(() => w)));

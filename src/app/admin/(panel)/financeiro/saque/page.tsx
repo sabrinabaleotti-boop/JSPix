@@ -32,7 +32,7 @@ export default async function SaquePage() {
     );
   }
 
-  const [{ recipients, error }, fee, withdrawals] = await Promise.all([loadWithdrawRecipients(), getWithdrawFee(), listWithdrawals(null, 100)]);
+  const [{ recipients, error }, fee, withdrawals] = await Promise.all([loadWithdrawRecipients(), getWithdrawFee(), listWithdrawals(null, 100, true)]);
 
   return (
     <div className="mx-auto max-w-5xl space-y-5">

@@ -12,7 +12,7 @@ import { getClientId } from "@/lib/auth";
 import { computeOurFee, periodBounds, serializeCharge } from "@/lib/charges";
 import { clientBalance } from "@/lib/finance";
 import { db } from "@/lib/db";
-import { serializeWithdrawal } from "@/lib/withdraw";
+import { serializeWithdrawal, withdrawalScope } from "@/lib/withdraw";
 import { formatBRL } from "@/lib/utils";
 import { getSetting } from "@/lib/settings";
 
@@ -30,7 +30,7 @@ export default async function AppHome() {
     db.charge.findMany({ where: { clientId }, orderBy: { createdAt: "desc" }, take: 6 }),
     clientBalance(clientId),
     db.client.findUnique({ where: { id: clientId }, select: { name: true, feePercent: true } }),
-    db.withdrawal.findMany({ where: { clientId }, orderBy: { createdAt: "desc" }, take: 3, include: { client: { select: { name: true } } } }),
+    db.withdrawal.findMany({ where: withdrawalScope(clientId), orderBy: { createdAt: "desc" }, take: 3, include: { client: { select: { name: true } } } }),
   ]);
 
   const feePercent = client?.feePercent !== null ? Number(client?.feePercent) : Number(await getSetting("fee_percent"));

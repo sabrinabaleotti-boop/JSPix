@@ -220,6 +220,50 @@ export async function getTransfer(recipientId: string, transferId: string, fallb
   return { ...toTransferResult(r, fallbackAmount), failureReason: r.failure_reason ?? null };
 }
 
+export type RemoteWithdrawal = {
+  id: string;
+  status: string | null;
+  amount: number;
+  fee: number | null;
+  fundingEstimatedDate: string | null;
+  createdAt: string | null;
+  failureReason: string | null;
+};
+
+/**
+ * Saques já feitos de um recebedor, do mais novo para o mais velho: GET /recipients/{id}/withdrawals
+ * (docs.pagar.me/reference/listar-saques). Se a conta não expõe essa rota, usa GET /transfers?recipient_id=.
+ */
+export async function listRecipientWithdrawals(recipientId: string): Promise<RemoteWithdrawal[]> {
+  const rid = encodeURIComponent(recipientId);
+  const out: RemoteWithdrawal[] = [];
+  let path = (page: number) => `/recipients/${rid}/withdrawals?page=${page}&size=100`;
+  for (let page = 1; page <= 5; page++) {
+    let res: { data?: Record<string, unknown>[] };
+    try {
+      res = await request(path(page));
+    } catch (e) {
+      if (page > 1 || !(e instanceof PagarmeError) || e.status !== 404) throw e;
+      path = (p) => `/transfers?recipient_id=${rid}&page=${p}&size=100`;
+      res = await request(path(page));
+    }
+    const data = res.data ?? [];
+    for (const w of data) {
+      out.push({
+        id: String(w.id),
+        status: (w.status as string) ?? null,
+        amount: Number(w.amount ?? 0),
+        fee: w.fee != null ? Number(w.fee) : null,
+        fundingEstimatedDate: (w.funding_estimated_date as string) ?? null,
+        createdAt: (w.created_at as string) ?? null,
+        failureReason: (w.failure_reason as string) ?? null,
+      });
+    }
+    if (data.length < 100) break;
+  }
+  return out;
+}
+
 /** Corpo no formato de docs.pagar.me/reference/criar-recebedor-1 (montado em recipient-input.ts). */
 export async function createRecipient(body: unknown) {
   const r = await request<{ id: string; status?: string }>("/recipients", { method: "POST", body: JSON.stringify(body) });
