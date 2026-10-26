@@ -1,9 +1,9 @@
 services:
   - type: web
-    name: jpix
+    name: jspix
     runtime: node
-    plan: free
-    region: oregon
+    plan: standard
+    region: virginia
     buildCommand: npm ci && npx prisma migrate deploy && npm run build
     startCommand: npm run start
     healthCheckPath: /
@@ -23,7 +23,7 @@ services:
       - key: PAGARME_ENV
         value: test
       - key: PUBLIC_URL
-        value: https://jpix.onrender.com
+        value: https://jspix.onrender.com
       - key: LEGACY_PUBLIC_KEY
         sync: false
       - key: LEGACY_SECRET_KEY
