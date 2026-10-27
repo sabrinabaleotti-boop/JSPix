@@ -78,7 +78,7 @@ export default function OpenGraphImage() {
               transform: "rotate(-4deg)",
             }}
           >
-            <div style={{ display: "flex", fontSize: 20, fontWeight: 600, color: "rgba(255,255,255,0.85)" }}>Saldo disponível</div>
+            <div style={{ display: "flex", fontSize: 20, fontWeight: 600, color: "rgba(255,255,255,0.85)" }}>Saldo recebido</div>
             <div style={{ display: "flex", marginTop: 10, fontSize: 56, fontWeight: 800, letterSpacing: -2 }}>R$ 12.480,00</div>
             <div style={{ display: "flex", marginTop: 16, gap: 10 }}>
               <div style={{ display: "flex", padding: "8px 14px", borderRadius: 999, fontSize: 17, fontWeight: 600, background: "rgba(255,255,255,0.18)" }}>+ R$ 1.240,00 hoje</div>

@@ -46,12 +46,18 @@ export async function markPaid(chargeId: string, paidAt: Date, gatewayFeeCents?:
   return paid;
 }
 
+/** Custo da Pagar.me na cobrança: o informado por ela ou, na falta, a estimativa pela taxa configurada. */
+export function gatewayFeeOf(c: Pick<Charge, "amountCents" | "gatewayFeeCents">, gatewayPercent: number) {
+  return c.gatewayFeeCents ?? Math.round((c.amountCents * gatewayPercent) / 100);
+}
+
 export function serializeCharge(c: Charge) {
-  const fee = c.ourFeeCents || computeOurFee(c.amountCents, Number(c.feePercent), c.feeFixedCents);
+  const gatewayFeeCents = c.gatewayFeeCents ?? 0;
   return {
     id: c.id,
     amountCents: c.amountCents,
-    netCents: c.amountCents - fee,
+    gatewayFeeCents,
+    netCents: c.amountCents - gatewayFeeCents,
     description: c.description,
     payerName: c.payerName,
     payerCpf: c.payerCpf,

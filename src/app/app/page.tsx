@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { ArrowRight, Banknote, Calendar, DollarSign, QrCode, Target, TrendingUp, Wallet } from "lucide-react";
+import { ArrowRight, Banknote, Calendar, DollarSign, Percent, QrCode, Target, Wallet } from "lucide-react";
 import Link from "next/link";
 import { ChargeList } from "@/components/charge-list";
 import { CountUp } from "@/components/count-up";
@@ -9,12 +9,13 @@ import { WithdrawalHistory } from "@/components/withdrawal-history";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { getClientId } from "@/lib/auth";
-import { computeOurFee, periodBounds, serializeCharge } from "@/lib/charges";
-import { clientBalance } from "@/lib/finance";
+import { gatewayFeeOf, periodBounds, serializeCharge } from "@/lib/charges";
 import { db } from "@/lib/db";
 import { serializeWithdrawal, withdrawalScope } from "@/lib/withdraw";
 import { formatBRL } from "@/lib/utils";
 import { getSetting } from "@/lib/settings";
+
+const COUNTED_WITHDRAWALS = { notIn: ["failed", "canceled"] };
 
 export default async function AppHome() {
   const clientId = await getClientId();
@@ -24,24 +25,35 @@ export default async function AppHome() {
   // expira pendentes vencidas antes de contar
   await db.charge.updateMany({ where: { clientId, status: "pending", expiresAt: { lt: new Date() } }, data: { status: "expired" } });
 
-  const [period, prev, recent, balance, client, withdrawals] = await Promise.all([
+  const [period, prev, paidAll, recent, client, withdrawals, withdrawnAll, withdrawn7d, gwPercent] = await Promise.all([
     db.charge.findMany({ where: { clientId, createdAt: { gte: since } } }),
     db.charge.findMany({ where: { clientId, createdAt: { gte: prevSince, lt: since }, status: "paid" } }),
+    db.charge.findMany({ where: { clientId, status: "paid" }, select: { amountCents: true, gatewayFeeCents: true } }),
     db.charge.findMany({ where: { clientId }, orderBy: { createdAt: "desc" }, take: 6 }),
-    clientBalance(clientId),
-    db.client.findUnique({ where: { id: clientId }, select: { name: true, feePercent: true } }),
+    db.client.findUnique({ where: { id: clientId }, select: { name: true } }),
     db.withdrawal.findMany({ where: withdrawalScope(clientId), orderBy: { createdAt: "desc" }, take: 3, include: { client: { select: { name: true } } } }),
+    db.withdrawal.aggregate({ where: { ...withdrawalScope(clientId), status: COUNTED_WITHDRAWALS }, _sum: { amountCents: true } }),
+    db.withdrawal.aggregate({ where: { ...withdrawalScope(clientId), status: COUNTED_WITHDRAWALS, createdAt: { gte: since } }, _sum: { amountCents: true } }),
+    getSetting("gateway_fee_percent"),
   ]);
 
-  const feePercent = client?.feePercent !== null ? Number(client?.feePercent) : Number(await getSetting("fee_percent"));
+  const gw = Number(gwPercent) || 0;
+  const gwLabel = `${gw.toFixed(2).replace(".", ",")}%`;
   const firstName = client?.name.split(/\s+/)[0] ?? "";
 
+  // Totais de sempre: o que entrou de fato na conta é o pago menos a taxa da Pagar.me.
+  const grossAll = paidAll.reduce((s, c) => s + c.amountCents, 0);
+  const gwFeeAll = paidAll.reduce((s, c) => s + gatewayFeeOf(c, gw), 0);
+  const netAll = grossAll - gwFeeAll;
+  const sacadoAll = withdrawnAll._sum.amountCents ?? 0;
+
+  // Últimos 7 dias
   const paid = period.filter((c) => c.status === "paid");
   const gross = paid.reduce((s, c) => s + c.amountCents, 0);
-  const fees = paid.reduce((s, c) => s + (c.ourFeeCents || computeOurFee(c.amountCents, Number(c.feePercent), c.feeFixedCents)), 0);
-  const net = gross - fees;
+  const gwFee = paid.reduce((s, c) => s + gatewayFeeOf(c, gw), 0);
   const prevGross = prev.reduce((s, c) => s + c.amountCents, 0);
   const delta = prevGross > 0 ? ((gross - prevGross) / prevGross) * 100 : gross > 0 ? 100 : 0;
+  const sacado7d = withdrawn7d._sum.amountCents ?? 0;
 
   const count = (s: string) => period.filter((c) => c.status === s).length;
   const dist = [
@@ -56,7 +68,7 @@ export default async function AppHome() {
 
   return (
     <div className="mx-auto max-w-7xl space-y-5">
-      <PageHeader eyebrow="Painel" title={firstName ? `Olá, ${firstName}` : "Visão geral"} description="Acompanhe cobranças, pagamentos e desempenho dos últimos 7 dias.">
+      <PageHeader eyebrow="Painel" title={firstName ? `Olá, ${firstName}` : "Visão geral"} description="Acompanhe cobranças, pagamentos e saques dos últimos 7 dias.">
         <Link href="/app/gerar" className="hidden sm:block">
           <Button className="h-10">
             <QrCode className="h-4 w-4" /> Gerar Pix
@@ -73,12 +85,14 @@ export default async function AppHome() {
                   <span className="grid h-7 w-7 place-items-center rounded-lg bg-white/18 ring-1 ring-white/25">
                     <Wallet className="h-4 w-4" />
                   </span>
-                  Saldo disponível
+                  Saldo recebido
                 </p>
                 <p className="mt-3 text-[40px] font-bold leading-none tracking-tight tabular drop-shadow-sm sm:text-[46px]">
-                  <CountUp value={balance} format="brl" duration={1100} />
+                  <CountUp value={netAll} format="brl" duration={1100} />
                 </p>
-                <p className="mt-2 text-xs text-white/75">Total acumulado após a taxa de {feePercent.toFixed(2).replace(".", ",")}%</p>
+                <p className="mt-2 text-xs text-white/75">
+                  {formatBRL(grossAll)} em Pix pagos · taxa Pagar.me ({gwLabel}) − {formatBRL(gwFeeAll)}
+                </p>
               </div>
               <div className="flex shrink-0 gap-2">
                 <Link href="/app/gerar" className="flex-1 sm:flex-none">
@@ -94,6 +108,9 @@ export default async function AppHome() {
               </div>
             </div>
             <div className="mt-6 flex flex-wrap gap-2 text-[11px] font-medium">
+              <span className="flex items-center gap-1.5 rounded-full bg-white/14 px-2.5 py-1 ring-1 ring-white/20">
+                <Banknote className="h-3 w-3" /> {formatBRL(sacadoAll)} sacados
+              </span>
               <span className="rounded-full bg-white/14 px-2.5 py-1 ring-1 ring-white/20">
                 {paid.length} pagamento{paid.length === 1 ? "" : "s"} em 7 dias
               </span>
@@ -111,9 +128,9 @@ export default async function AppHome() {
         </Card>
 
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <StatCard title="Recebido" subtitle="Pagamentos confirmados · 7 dias" cents={gross} icon={DollarSign} />
-          <StatCard title="Líquido" subtitle={`Após taxa de ${feePercent.toFixed(2).replace(".", ",")}%`} cents={net} delta={delta} icon={TrendingUp} />
-          <StatCard title="Cobranças" subtitle="Geradas no período" count={period.length} icon={QrCode} />
+          <StatCard title="Pix pagos" subtitle="Valor pago · 7 dias" cents={gross} delta={delta} icon={DollarSign} />
+          <StatCard title="Taxa Pagar.me" subtitle={`${gwLabel} descontado por Pix · 7 dias`} cents={gwFee} icon={Percent} />
+          <StatCard title="Sacado" subtitle="Transferido para a conta · 7 dias" cents={sacado7d} icon={Banknote} />
           <StatCard title="Conversão" subtitle="Cobranças que foram pagas" value={`${conv}%`} icon={Target} />
         </div>
 
@@ -172,8 +189,8 @@ export default async function AppHome() {
                     <p className="mt-1 text-lg font-bold tabular">{formatBRL(ticket)}</p>
                   </div>
                   <div className="rounded-xl bg-muted/60 p-3">
-                    <p className="text-[11px] text-muted-foreground">Conversão</p>
-                    <p className="mt-1 text-lg font-bold tabular">{conv}%</p>
+                    <p className="text-[11px] text-muted-foreground">Líquido · 7 dias</p>
+                    <p className="mt-1 text-lg font-bold tabular">{formatBRL(gross - gwFee)}</p>
                   </div>
                 </div>
               </CardContent>

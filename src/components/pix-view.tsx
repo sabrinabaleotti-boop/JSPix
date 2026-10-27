@@ -116,7 +116,7 @@ export function PixView({ initial }: { initial: ChargeDTO }) {
               {charge.paidAt && <p className="text-xs text-muted-foreground">{new Date(charge.paidAt).toLocaleString("pt-BR")}</p>}
               {charge.netCents !== undefined && charge.netCents !== charge.amountCents && (
                 <div className="mt-4 w-full rounded-xl bg-muted/60 px-4 py-3 text-center">
-                  <p className="text-[11px] text-muted-foreground">Valor líquido (após taxa de {charge.feePercent.toFixed(2).replace(".", ",")}%)</p>
+                  <p className="text-[11px] text-muted-foreground">Líquido na conta (taxa Pagar.me − {maskBRL(charge.gatewayFeeCents)})</p>
                   <p className="text-xl font-bold tabular">{maskBRL(charge.netCents)}</p>
                 </div>
               )}

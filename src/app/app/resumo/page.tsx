@@ -1,14 +1,16 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { ArrowRight, DollarSign, Percent, QrCode, Target, TrendingUp, Wallet } from "lucide-react";
+import { ArrowRight, Banknote, DollarSign, Percent, QrCode, Target, Wallet } from "lucide-react";
 import { ChargeList } from "@/components/charge-list";
 import { PageHeader } from "@/components/admin/page-header";
 import { StatCard } from "@/components/stat-card";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { getClientId } from "@/lib/auth";
-import { computeOurFee, serializeCharge } from "@/lib/charges";
+import { gatewayFeeOf, serializeCharge } from "@/lib/charges";
 import { db } from "@/lib/db";
 import { PERIODS, periodRange } from "@/lib/finance";
+import { getSetting } from "@/lib/settings";
+import { withdrawalScope } from "@/lib/withdraw";
 import { cn, formatBRL } from "@/lib/utils";
 
 export const metadata = { title: "Resumo" };
@@ -26,16 +28,18 @@ export default async function ResumoPage({ searchParams }: { searchParams: Promi
   await db.charge.updateMany({ where: { clientId, status: "pending", expiresAt: { lt: new Date() } }, data: { status: "expired" } });
 
   const createdFilter = range.from || range.to ? { ...(range.from ? { gte: range.from } : {}), ...(range.to ? { lt: range.to } : {}) } : undefined;
-  const [charges, paidInPeriod] = await Promise.all([
+  const [charges, paidInPeriod, withdrawn, gwPercent] = await Promise.all([
     db.charge.findMany({ where: { clientId, ...(createdFilter ? { createdAt: createdFilter } : {}) } }),
     db.charge.findMany({ where: { clientId, status: "paid", ...(createdFilter ? { paidAt: createdFilter } : {}) }, orderBy: { paidAt: "desc" } }),
+    db.withdrawal.aggregate({ where: { ...withdrawalScope(clientId), status: { notIn: ["failed", "canceled"] }, ...(createdFilter ? { createdAt: createdFilter } : {}) }, _sum: { amountCents: true } }),
+    getSetting("gateway_fee_percent"),
   ]);
 
-  const feeOf = (c: (typeof charges)[number]) => c.ourFeeCents || computeOurFee(c.amountCents, Number(c.feePercent), c.feeFixedCents);
+  const gw = Number(gwPercent) || 0;
   const gross = paidInPeriod.reduce((s, c) => s + c.amountCents, 0);
-  const fees = paidInPeriod.reduce((s, c) => s + feeOf(c), 0);
+  const fees = paidInPeriod.reduce((s, c) => s + gatewayFeeOf(c, gw), 0);
   const net = gross - fees;
-  const ticket = paidInPeriod.length ? Math.round(gross / paidInPeriod.length) : 0;
+  const sacado = withdrawn._sum.amountCents ?? 0;
   const paidCount = charges.filter((c) => c.status === "paid").length;
   const conv = charges.length ? Math.round((paidCount / charges.length) * 100) : 0;
 
@@ -86,10 +90,10 @@ export default async function ResumoPage({ searchParams }: { searchParams: Promi
 
       <div className="stagger space-y-5">
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <StatCard title="Recebido" subtitle={`${paidInPeriod.length} pagamento${paidInPeriod.length === 1 ? "" : "s"}`} cents={gross} icon={DollarSign} highlight />
-          <StatCard title="Líquido" subtitle="O que ficou para você" cents={net} icon={Wallet} />
-          <StatCard title="Taxas" subtitle="Descontadas dos pagamentos" cents={fees} icon={Percent} />
-          <StatCard title="Ticket médio" subtitle="Valor médio por pagamento" cents={ticket} icon={TrendingUp} />
+          <StatCard title="Pix pagos" subtitle={`${paidInPeriod.length} pagamento${paidInPeriod.length === 1 ? "" : "s"}`} cents={gross} icon={DollarSign} highlight />
+          <StatCard title="Taxa Pagar.me" subtitle={`${gw.toFixed(2).replace(".", ",")}% descontado por Pix`} cents={fees} icon={Percent} />
+          <StatCard title="Líquido na conta" subtitle="Pagos menos a taxa da Pagar.me" cents={net} icon={Wallet} />
+          <StatCard title="Sacado" subtitle="Transferido para a conta bancária" cents={sacado} icon={Banknote} />
         </div>
 
         <div className="grid gap-4 lg:grid-cols-[1.6fr_1fr]">

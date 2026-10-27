@@ -16,7 +16,6 @@ const steps = [
 const faq = [
   { q: "Quanto tempo o Pix fica válido?", a: "Você escolhe ao gerar: 15 minutos, 30 minutos, 1 hora ou 24 horas. Depois disso ele expira e é preciso gerar outro." },
   { q: "Como sei que fui pago?", a: "A tela do Pix atualiza sozinha e o status muda para Pago. A cobrança também aparece como paga no histórico e na visão geral." },
-  { q: "O que é a taxa?", a: "É o percentual descontado de cada pagamento confirmado. O valor líquido, já sem a taxa, é o que entra no seu saldo." },
   { q: "Quanto tempo leva o saque?", a: "Normalmente cai em até 1 dia útil. Enquanto isso você acompanha o andamento em Sacar → Histórico de saques." },
   { q: "Posso cancelar um saque?", a: "Não. Depois de confirmado, o saque é enviado ao banco e não pode ser desfeito. Confira o valor antes de confirmar." },
 ];

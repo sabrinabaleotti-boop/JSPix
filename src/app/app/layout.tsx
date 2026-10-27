@@ -14,7 +14,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const client = await db.client.findUnique({ where: { id: clientId } });
   if (!client || !client.active) redirect("/");
 
-  const fee = client.feePercent !== null ? Number(client.feePercent) : Number(await getSetting("fee_percent"));
+  const gw = Number(await getSetting("gateway_fee_percent")) || 0;
 
   return (
     <div className="flex min-h-screen">
@@ -22,7 +22,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <div className="flex min-w-0 flex-1 flex-col">
         <Topbar
           user={{ name: client.name, handle: `código ${client.accessCode}`, role: "CLIENTE" }}
-          badge={`Taxa ${fee.toFixed(2).replace(".", ",")}%`}
+          badge={`Taxa Pagar.me ${gw.toFixed(2).replace(".", ",")}%`}
           menu={<AppMobileMenu />}
         />
         <main className="flex-1 px-4 py-6 pb-28 md:px-8 md:py-8 md:pb-10">
