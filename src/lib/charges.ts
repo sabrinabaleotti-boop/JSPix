@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { fetchRemoteState } from "@/lib/gateway";
 import { getSetting } from "@/lib/settings";
+import { notifyChargePaid } from "@/lib/push";
 import type { Charge, ChargeStatus } from "@prisma/client";
 
 export function computeOurFee(amountCents: number, feePercent: number, feeFixedCents: number) {
@@ -40,7 +41,9 @@ export async function markPaid(chargeId: string, paidAt: Date, gatewayFeeCents?:
   const ourFeeCents = computeOurFee(c.amountCents, Number(c.feePercent), c.feeFixedCents);
   // Custo da gateway: o informado por ela ou, na falta, a estimativa configurada no admin, congelada aqui.
   const fee = gatewayFeeCents ?? Math.round((c.amountCents * Number(await getSetting("gateway_fee_percent"))) / 100);
-  return db.charge.update({ where: { id: chargeId }, data: { status: "paid", paidAt, ourFeeCents, gatewayFeeCents: c.gateway === "simulated" ? 0 : fee } });
+  const paid = await db.charge.update({ where: { id: chargeId }, data: { status: "paid", paidAt, ourFeeCents, gatewayFeeCents: c.gateway === "simulated" ? 0 : fee } });
+  await notifyChargePaid(chargeId);
+  return paid;
 }
 
 export function serializeCharge(c: Charge) {

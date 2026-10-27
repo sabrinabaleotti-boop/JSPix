@@ -65,6 +65,9 @@ Na tela do Render, preencha as variáveis:
 | `LEGACY_PUBLIC_KEY` | (deixe vazio se não usar) | Chave pública Legacy Ecom |
 | `LEGACY_SECRET_KEY` | (deixe vazio se não usar) | Chave secreta Legacy Ecom |
 | `LEGACY_WEBHOOK_SECRET` | (deixe vazio se não usar) | Segredo webhook Legacy |
+| `VAPID_PUBLIC_KEY` | `<npx web-push generate-vapid-keys>` | Web Push: chave pública (aviso de Pix pago) |
+| `VAPID_PRIVATE_KEY` | `<npx web-push generate-vapid-keys>` | Web Push: chave privada |
+| `VAPID_SUBJECT` | `mailto:seu@email.com` | Contato exigido pelo protocolo Web Push |
 
 ---
 

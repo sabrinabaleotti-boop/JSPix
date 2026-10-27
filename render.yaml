@@ -28,5 +28,11 @@ services:
         sync: false
       - key: LEGACY_SECRET_KEY
         sync: false
+      - key: VAPID_PUBLIC_KEY
+        sync: false
+      - key: VAPID_PRIVATE_KEY
+        sync: false
+      - key: VAPID_SUBJECT
+        value: mailto:barnabe@gmail.com
       - key: LEGACY_WEBHOOK_SECRET
         sync: false

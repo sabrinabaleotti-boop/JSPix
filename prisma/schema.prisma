@@ -13,6 +13,7 @@ model Admin {
   email        String   @unique
   passwordHash String
   totpSecret   String?
+  pushSubscriptions PushSubscription[]
   createdAt    DateTime @default(now())
 }
 
@@ -46,6 +47,7 @@ model Client {
   charges          Charge[]
   payouts          Payout[]
   withdrawals      Withdrawal[]
+  pushSubscriptions PushSubscription[]
   createdAt        DateTime @default(now())
 }
 
@@ -144,4 +146,21 @@ model WebhookEvent {
 model Setting {
   key   String @id
   value String
+}
+
+/// Inscrição Web Push de um navegador (cliente ou admin) para avisar quando um Pix é pago.
+model PushSubscription {
+  id        String   @id @default(cuid())
+  clientId  String?
+  client    Client?  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  adminId   String?
+  admin     Admin?   @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@index([clientId])
+  @@index([adminId])
 }

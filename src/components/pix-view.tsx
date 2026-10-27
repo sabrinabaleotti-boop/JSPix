@@ -49,7 +49,13 @@ export function PixView({ initial }: { initial: ChargeDTO }) {
     if (charge.status !== "pending") return;
     const poll = async () => {
       const res = await fetch(`/api/charges/${charge.id}`, { cache: "no-store" });
-      if (res.ok) setCharge(await res.json());
+      if (res.ok) {
+        const next = (await res.json()) as ChargeDTO;
+        if (next.status === "paid") {
+          window.dispatchEvent(new CustomEvent("jspix:paid", { detail: { chargeId: next.id, amountCents: next.amountCents, description: next.description, silentToast: true } }));
+        }
+        setCharge(next);
+      }
     };
     const t = setInterval(poll, 5000);
     if (left <= 0) poll();
