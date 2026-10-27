@@ -25,7 +25,7 @@ export default async function WebhookPage() {
   const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
   const url = `${proto}://${host}/api/webhooks/pagarme`;
 
-  const s = await getSettings(["webhook_user", "webhook_pass_enc"]);
+  const s = await getSettings(["webhook_user", "webhook_pass_enc", "webhook_last_rejected"]);
   let password = "";
   try {
     password = s.webhook_pass_enc ? decryptSecret(s.webhook_pass_enc) : "";
@@ -33,6 +33,12 @@ export default async function WebhookPage() {
     password = "";
   }
   const configured = !!(s.webhook_user && password);
+  let rejected: { at: string; scheme: string; user: string; passLen: number; userOk: boolean; passLenOk: boolean } | null = null;
+  try {
+    rejected = s.webhook_last_rejected ? JSON.parse(s.webhook_last_rejected) : null;
+  } catch {
+    rejected = null;
+  }
   const [events, legacySecret] = await Promise.all([db.webhookEvent.findMany({ orderBy: { receivedAt: "desc" }, take: 50 }), getLegacyWebhookSecret()]);
 
   return (
@@ -83,6 +89,24 @@ export default async function WebhookPage() {
             </div>
           ) : (
             <p className="text-sm text-muted-foreground">Gere as credenciais. Sem elas o endpoint recusa todos os eventos.</p>
+          )}
+          {rejected && (
+            <div className="rounded-xl border border-warning/40 bg-warning/10 p-3 text-xs">
+              <p className="font-semibold">Última chamada recusada (401) em {new Date(rejected.at).toLocaleString("pt-BR")}</p>
+              <ul className="mt-1 space-y-0.5 text-muted-foreground">
+                <li>Autenticação recebida: {rejected.scheme === "nenhum" ? "nenhuma (a Pagar.me não enviou usuário e senha)" : rejected.scheme}</li>
+                {rejected.scheme !== "nenhum" && (
+                  <>
+                    <li>
+                      Usuário recebido: <span className="font-mono">{rejected.user || "(vazio)"}</span> {rejected.userOk ? "✓ confere" : `✗ esperado ${s.webhook_user}`}
+                    </li>
+                    <li>
+                      Senha recebida: {rejected.passLen} caracteres {rejected.passLenOk ? "(tamanho confere, mas o conteúdo não)" : `(esperado ${password.length})`}
+                    </li>
+                  </>
+                )}
+              </ul>
+            </div>
           )}
           <div>
             <p className="mb-1.5 text-xs font-medium text-muted-foreground">Eventos para marcar</p>
