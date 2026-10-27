@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getAdminId, getClientId } from "@/lib/auth";
+import { reconcilePendingCharges } from "@/lib/reconcile";
 
 const MAX_WINDOW_MS = 10 * 60 * 1000;
 
@@ -11,6 +12,9 @@ export async function GET(req: Request) {
   const [clientId, adminId] = await Promise.all([getClientId(), getAdminId()]);
   const asAdmin = scope === "admin" && !!adminId;
   if (!asAdmin && !clientId) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+
+  // Rede de segurança para webhook perdido: confere os pendentes na gateway antes de listar os pagos.
+  await reconcilePendingCharges();
 
   const now = new Date();
   const sinceRaw = Date.parse(url.searchParams.get("since") ?? "");

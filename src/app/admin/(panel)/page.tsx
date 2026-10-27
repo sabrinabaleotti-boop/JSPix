@@ -11,6 +11,7 @@ import { db } from "@/lib/db";
 import { periodBounds } from "@/lib/charges";
 import { cn, formatBRL } from "@/lib/utils";
 import { syncExpiredCharges } from "@/lib/expiry-sync";
+import { reconcilePendingCharges } from "@/lib/reconcile";
 
 export const metadata = { title: "Admin" };
 
@@ -19,7 +20,7 @@ const medal = ["gradient-primary text-white shadow-primary", "bg-slate-200 text-
 export default async function AdminHome() {
   await requireAdmin();
   const { since } = periodBounds(30);
-  await syncExpiredCharges();
+  await Promise.all([syncExpiredCharges(), reconcilePendingCharges()]);
 
   const [paid30, paidAll, payouts, pendingNow, top, recent] = await Promise.all([
     db.charge.aggregate({ where: { status: "paid", paidAt: { gte: since } }, _sum: { amountCents: true, ourFeeCents: true }, _count: true }),

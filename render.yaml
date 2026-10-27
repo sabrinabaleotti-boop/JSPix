@@ -10,6 +10,10 @@ services:
     envVars:
       - key: NODE_VERSION
         value: "24"
+      - key: TZ
+        value: America/Sao_Paulo
+      - key: CRON_SECRET
+        generateValue: true
       - key: DATABASE_URL
         sync: false
       - key: DIRECT_URL
