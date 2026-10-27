@@ -39,6 +39,20 @@ export async function processPagarmeEvent(event: { id: string; type: string; dat
   };
   const status = map[type];
   if (!status) return `ignorado: tipo ${type}`;
+  // O evento é só o gatilho: o status que vale é o que a API da Pagar.me responde agora.
+  // Assim um evento forjado ou atrasado nunca marca uma cobrança como paga indevidamente.
+  if (charge.gateway === "pagarme") {
+    try {
+      const remote = await fetchRemoteState(charge);
+      if (remote && remote.status !== "pending") {
+        const updated = await applyRemoteStatus(charge, remote.status, remote);
+        return `cobrança ${charge.id} → ${updated.status} (confirmado na API)`;
+      }
+      if (remote) return `cobrança ${charge.id}: API ainda responde pendente; a reconciliação confirma em seguida`;
+    } catch {
+      // API indisponível: usa o conteúdo do evento
+    }
+  }
   const paidAt = (get(data, "paid_at") ?? get(data, "charges.0.paid_at")) as string | undefined;
   const updated = await applyRemoteStatus(charge, status, { paidAt: paidAt ? new Date(paidAt) : undefined });
   return `cobrança ${charge.id} → ${updated.status}`;

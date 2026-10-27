@@ -430,6 +430,8 @@ export async function generateWebhookCredentials() {
   await requireAdmin();
   await setSetting("webhook_user", "jpix");
   await setSetting("webhook_pass_enc", encryptSecret(randomBytes(18).toString("base64url")));
+  await setSetting("webhook_token", randomBytes(24).toString("base64url"));
+  await deleteSettings(["webhook_last_rejected"]);
   revalidatePath("/admin/configuracoes/webhook");
 }
 

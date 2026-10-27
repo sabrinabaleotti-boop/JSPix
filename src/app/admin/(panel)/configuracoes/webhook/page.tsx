@@ -23,17 +23,18 @@ export default async function WebhookPage() {
   const h = await headers();
   const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
   const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
-  const url = `${proto}://${host}/api/webhooks/pagarme`;
+  const baseUrl = `${proto}://${host}/api/webhooks/pagarme`;
 
-  const s = await getSettings(["webhook_user", "webhook_pass_enc", "webhook_last_rejected"]);
+  const s = await getSettings(["webhook_user", "webhook_pass_enc", "webhook_token", "webhook_last_rejected"]);
   let password = "";
   try {
     password = s.webhook_pass_enc ? decryptSecret(s.webhook_pass_enc) : "";
   } catch {
     password = "";
   }
-  const configured = !!(s.webhook_user && password);
-  let rejected: { at: string; scheme: string; user: string; passLen: number; userOk: boolean; passLenOk: boolean } | null = null;
+  const configured = !!s.webhook_token;
+  const url = configured ? `${baseUrl}?token=${s.webhook_token}` : baseUrl;
+  let rejected: { at: string; scheme: string; user: string; passLen: number; userOk: boolean; passLenOk: boolean; tokenLen?: number } | null = null;
   try {
     rejected = s.webhook_last_rejected ? JSON.parse(s.webhook_last_rejected) : null;
   } catch {
@@ -76,25 +77,30 @@ export default async function WebhookPage() {
         <CardHeader>
           <div>
             <CardTitle>Pagar.me</CardTitle>
-            <CardDescription>Em dash.pagar.me, Configurações, Webhooks, crie um webhook com estes dados.</CardDescription>
+            <CardDescription>Em dash.pagar.me, Configurações, Webhooks, crie um webhook com esta URL. O segredo já vai na URL: em Autenticação, deixe “Nenhuma”.</CardDescription>
           </div>
           {configured ? <Badge variant="success">Configurado</Badge> : <Badge variant="warning">Pendente</Badge>}
         </CardHeader>
         <CardContent className="space-y-4">
-          <CopyField label="URL" value={url} />
-          {configured ? (
-            <div className="grid gap-4 sm:grid-cols-2">
-              <CopyField label="Usuário (autenticação básica)" value={s.webhook_user} />
-              <CopyField label="Senha (autenticação básica)" value={password} secret />
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">Gere as credenciais. Sem elas o endpoint recusa todos os eventos.</p>
+          <CopyField label="URL do webhook (com o segredo)" value={url} secret={configured} />
+          {!configured && <p className="text-sm text-muted-foreground">Gere o segredo. Sem ele o endpoint recusa todos os eventos.</p>}
+          {configured && s.webhook_user && password && (
+            <details className="text-xs text-muted-foreground">
+              <summary className="cursor-pointer">Alternativa: autenticação básica (se preferir a URL sem segredo)</summary>
+              <div className="mt-3 grid gap-4 sm:grid-cols-2">
+                <CopyField label="URL" value={baseUrl} />
+                <div />
+                <CopyField label="Usuário" value={s.webhook_user} />
+                <CopyField label="Senha" value={password} secret />
+              </div>
+            </details>
           )}
           {rejected && (
             <div className="rounded-xl border border-warning/40 bg-warning/10 p-3 text-xs">
               <p className="font-semibold">Última chamada recusada (401) em {new Date(rejected.at).toLocaleString("pt-BR")}</p>
               <ul className="mt-1 space-y-0.5 text-muted-foreground">
-                <li>Autenticação recebida: {rejected.scheme === "nenhum" ? "nenhuma (a Pagar.me não enviou usuário e senha)" : rejected.scheme}</li>
+                <li>Segredo na URL: {rejected.tokenLen ? `recebido com ${rejected.tokenLen} caracteres, mas não confere` : "não veio (a URL cadastrada na Pagar.me está sem o ?token=)"}</li>
+                <li>Autenticação básica: {rejected.scheme === "nenhum" ? "não enviada" : rejected.scheme}</li>
                 {rejected.scheme !== "nenhum" && (
                   <>
                     <li>
@@ -120,9 +126,9 @@ export default async function WebhookPage() {
           </div>
           <form action={generateWebhookCredentials}>
             <SubmitButton variant={configured ? "outline" : "primary"}>
-              <KeyRound className="h-4 w-4" /> {configured ? "Gerar nova senha" : "Gerar credenciais"}
+              <KeyRound className="h-4 w-4" /> {configured ? "Gerar novo segredo" : "Gerar segredo"}
             </SubmitButton>
-            {configured && <p className="mt-1.5 text-[11px] text-muted-foreground">Ao gerar uma nova senha, atualize também na Pagar.me.</p>}
+            {configured && <p className="mt-1.5 text-[11px] text-muted-foreground">Ao gerar um novo segredo, atualize a URL também na Pagar.me.</p>}
           </form>
         </CardContent>
       </Card>

@@ -13,29 +13,43 @@ function safeEqual(a: string, b: string) {
 }
 
 // Guarda só o que ajuda a diagnosticar (usuário e tamanho da senha recebidos), nunca a senha em si.
-async function recordRejected(received: string, user: string, password: string) {
-  const [scheme = "", token = ""] = received.split(" ");
+async function recordRejected(received: string, user: string, password: string, token: string) {
+  const [scheme = "", credentials = ""] = received.split(" ");
   let gotUser = "";
   let gotPassLen = 0;
   if (scheme.toLowerCase() === "basic") {
-    const [u = "", ...rest] = Buffer.from(token, "base64").toString("utf8").split(":");
+    const [u = "", ...rest] = Buffer.from(credentials, "base64").toString("utf8").split(":");
     gotUser = u;
     gotPassLen = rest.join(":").length;
   }
-  const info = { at: new Date().toISOString(), scheme: scheme || "nenhum", user: gotUser, passLen: gotPassLen, userOk: gotUser === user, passLenOk: gotPassLen === password.length };
+  const info = {
+    at: new Date().toISOString(),
+    scheme: scheme || "nenhum",
+    user: gotUser,
+    passLen: gotPassLen,
+    userOk: gotUser === user,
+    passLenOk: gotPassLen === password.length,
+    tokenLen: token.length,
+  };
   await setSetting("webhook_last_rejected", JSON.stringify(info)).catch(() => {});
 }
 
 export async function POST(req: Request) {
-  const s = await getSettings(["webhook_user", "webhook_pass_enc", "webhook_last_rejected"]);
-  if (!s.webhook_user || !s.webhook_pass_enc) {
+  const s = await getSettings(["webhook_user", "webhook_pass_enc", "webhook_token", "webhook_last_rejected"]);
+  const hasBasic = !!(s.webhook_user && s.webhook_pass_enc);
+  if (!hasBasic && !s.webhook_token) {
     return NextResponse.json({ error: "Webhook não configurado" }, { status: 503 });
   }
-  const password = decryptSecret(s.webhook_pass_enc);
-  const expected = "Basic " + Buffer.from(`${s.webhook_user}:${password}`).toString("base64");
+  // Aceita o segredo na URL (?token=) ou usuário/senha em autenticação básica.
+  // O painel da Pagar.me nem sempre envia a autenticação básica, por isso a URL com token é o caminho padrão.
+  const token = new URL(req.url).searchParams.get("token") ?? "";
+  const tokenOk = !!s.webhook_token && safeEqual(token, s.webhook_token);
+  const password = hasBasic ? decryptSecret(s.webhook_pass_enc) : "";
+  const expected = hasBasic ? "Basic " + Buffer.from(`${s.webhook_user}:${password}`).toString("base64") : "";
   const received = req.headers.get("authorization") ?? "";
-  if (!safeEqual(received, expected)) {
-    await recordRejected(received, s.webhook_user, password);
+  const basicOk = hasBasic && safeEqual(received, expected);
+  if (!tokenOk && !basicOk) {
+    await recordRejected(received, s.webhook_user, password, token);
     return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
   }
   if (s.webhook_last_rejected) await deleteSettings(["webhook_last_rejected"]);
