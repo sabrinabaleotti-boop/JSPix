@@ -286,3 +286,8 @@ export function keyEnvironment(key: string) {
   if (key.startsWith("sk_")) return "live" as const;
   return null;
 }
+
+export const BALANCE_TAG = "pagarme-balance";
+
+/** Saldo com cache de 20 s: reabrir a tela Sacar não espera a Pagar.me de novo. Um saque invalida pelo BALANCE_TAG. */
+export const getRecipientBalanceCached = unstable_cache(getRecipientBalance, ["pagarme-balance"], { tags: [BALANCE_TAG], revalidate: 20 });

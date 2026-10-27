@@ -9,7 +9,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { parseMoneyToCents } from "@/lib/money";
 import { cn, formatBRL } from "@/lib/utils";
-import { WITHDRAWAL_STATUS, normalizeWithdrawalStatus, type WithdrawRecipient, type WithdrawState } from "@/lib/withdraw";
+import { WITHDRAWAL_STATUS, normalizeWithdrawalStatus, type WithdrawRecipient, type WithdrawState } from "@/lib/withdrawal-status";
 
 type WithdrawAction = (recipientId: string, amountCents: number, idempotencyKey: string) => Promise<WithdrawState>;
 

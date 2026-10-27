@@ -1,6 +1,6 @@
 import { Ban, Check, Clock, Landmark, Loader2, XCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { WITHDRAWAL_STATUS, type WithdrawalDTO, type WithdrawalStatus } from "@/lib/withdraw";
+import { WITHDRAWAL_STATUS, type WithdrawalDTO, type WithdrawalStatus } from "@/lib/withdrawal-status";
 import { cn, formatBRL } from "@/lib/utils";
 
 const ICON: Record<WithdrawalStatus, { icon: typeof Check; className: string; spin?: boolean }> = {

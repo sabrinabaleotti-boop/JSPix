@@ -1,8 +1,9 @@
+import { revalidateTag } from "next/cache";
 import { db } from "@/lib/db";
-import { createTransfer, getRecipientBalance, getTransfer, listRecipientsCached, listRecipientWithdrawals, type TransferResult } from "@/lib/pagarme";
+import { BALANCE_TAG, createTransfer, getRecipientBalance, getRecipientBalanceCached, listRecipientsCached, listRecipientWithdrawals, type RemoteWithdrawal, type TransferResult } from "@/lib/pagarme";
 import { getSetting } from "@/lib/settings";
 import { formatBRL } from "@/lib/utils";
-import type { Withdrawal } from "@prisma/client";
+import type { Prisma, Withdrawal } from "@prisma/client";
 
 /** Tarifa por saque (centavos). A Pagar.me tira do saldo além do valor sacado: um saque do saldo inteiro é recusado. */
 export async function getWithdrawFee() {
@@ -14,48 +15,18 @@ export function maxWithdraw(available: number, fee: number) {
   return Math.max(0, available - fee);
 }
 
-export type WithdrawRecipient = {
-  id: string;
-  name: string;
-  document: string | null;
-  status: string | null;
-  available: number;
-  waiting: number;
-  balanceError: string | null;
-};
+export { WITHDRAWAL_STATUS, FINAL_WITHDRAWAL_STATUSES, normalizeWithdrawalStatus } from "@/lib/withdrawal-status";
+export type { WithdrawRecipient, WithdrawState, WithdrawalStatus, WithdrawalDTO } from "@/lib/withdrawal-status";
+import { WITHDRAWAL_STATUS, normalizeWithdrawalStatus, type WithdrawRecipient, type WithdrawState, type WithdrawalStatus, type WithdrawalDTO } from "@/lib/withdrawal-status";
 
-export type WithdrawState = { error?: string; transfer?: TransferResult };
-
-export type WithdrawalStatus = "pending_transfer" | "processing" | "transferred" | "failed" | "canceled";
-
-export const WITHDRAWAL_STATUS: Record<WithdrawalStatus, { label: string; short: string; variant: "success" | "warning" | "destructive" | "neutral" | "primary"; step: number }> = {
-  pending_transfer: { label: "Aguardando transferência", short: "Solicitado", variant: "warning", step: 1 },
-  processing: { label: "Processando no banco", short: "Processando", variant: "primary", step: 2 },
-  transferred: { label: "Transferido para a conta", short: "Concluído", variant: "success", step: 3 },
-  failed: { label: "Falhou", short: "Falhou", variant: "destructive", step: 3 },
-  canceled: { label: "Cancelado", short: "Cancelado", variant: "neutral", step: 3 },
-};
-
-export const FINAL_WITHDRAWAL_STATUSES: WithdrawalStatus[] = ["transferred", "failed", "canceled"];
-
-/** Normaliza o status que a Pagar.me devolve (varia entre "pending" e "pending_transfer" conforme a rota). */
-export function normalizeWithdrawalStatus(s: string | null | undefined): WithdrawalStatus {
-  const v = (s ?? "").toLowerCase();
-  if (v === "transferred" || v === "paid" || v === "completed") return "transferred";
-  if (v === "processing" || v === "in_progress") return "processing";
-  if (v === "failed" || v === "refused" || v === "error") return "failed";
-  if (v === "canceled" || v === "cancelled") return "canceled";
-  return "pending_transfer";
-}
-
-/** Recebedores da conta com o saldo consultado na hora (sem cache), do maior disponível para o menor. */
+/** Recebedores da conta com saldo (cache de 20 s), do maior disponível para o menor. */
 export async function loadWithdrawRecipients(): Promise<{ recipients: WithdrawRecipient[]; error: string | null }> {
   try {
     const list = await listRecipientsCached();
     const recipients = await Promise.all(
       list.map(async (r) => {
         try {
-          const b = await getRecipientBalance(r.id);
+          const b = await getRecipientBalanceCached(r.id);
           return { id: r.id, name: r.name, document: r.document, status: r.status, available: b.available, waiting: b.waiting, balanceError: null };
         } catch (e) {
           return { id: r.id, name: r.name, document: r.document, status: r.status, available: 0, waiting: 0, balanceError: (e as Error).message };
@@ -86,6 +57,7 @@ export async function withdraw(recipientId: string, amountCents: number, idempot
       return { error: fee ? `O máximo é ${formatBRL(max)}: saldo de ${formatBRL(balance.available)} menos a tarifa de ${formatBRL(fee)}.` : `Saldo disponível é ${formatBRL(balance.available)}` };
     }
     const transfer = await createTransfer(recipientId, amountCents, idempotencyKey);
+    revalidateTag(BALANCE_TAG, "max");
     await recordWithdrawal(transfer, recipientId, clientId, fee);
     return { transfer };
   } catch (e) {
@@ -118,68 +90,96 @@ async function recordWithdrawal(t: TransferResult, recipientId: string, clientId
   }
 }
 
-const REFRESH_AFTER_MS = 60_000;
-const SYNC_EVERY_MS = 30_000;
+const SYNC_EVERY_MS = 20_000;
+const TWIN_WINDOW_MS = 180_000;
 let lastSync = 0;
 
 /**
- * Importa da Pagar.me os saques de todos os recebedores: os feitos antes do histórico existir, pelo painel da
- * Pagar.me ou por outro sistema entram sem cliente (clientId null); os já conhecidos só têm o status atualizado.
- * Roda no máximo a cada 30 s por processo e nunca derruba a página.
+ * Importa da Pagar.me os saques de todos os recebedores e atualiza o status dos conhecidos, em lote: a listagem já
+ * traz a situação atual de cada saque, então são 2 chamadas à Pagar.me (em paralelo) e 2 a 4 consultas ao banco,
+ * independentemente de quantos saques existam. Saques feitos fora do app entram sem cliente (clientId null).
+ * Roda no máximo a cada 20 s por processo e nunca derruba a página.
  */
 export async function syncWithdrawalsFromPagarme(force = false) {
   if (!force && Date.now() - lastSync < SYNC_EVERY_MS) return;
   lastSync = Date.now();
   try {
     const recipients = await listRecipientsCached();
-    await Promise.all(
-      recipients.map(async (r) => {
-        const remote = await listRecipientWithdrawals(r.id).catch((e) => {
+    const lists = await Promise.all(
+      recipients.map(async (r) => ({
+        r,
+        remote: await listRecipientWithdrawals(r.id).catch((e) => {
           console.error("[withdraw] não foi possível listar saques do recebedor", r.id, (e as Error).message);
-          return [];
-        });
-        for (const w of remote) {
-          const status = normalizeWithdrawalStatus(w.status);
-          const createdAt = w.createdAt ? new Date(w.createdAt) : null;
-          const data = {
-            status,
-            ...(w.fee != null ? { feeCents: w.fee } : {}),
-            ...(w.fundingEstimatedDate ? { fundingEstimatedDate: new Date(w.fundingEstimatedDate) } : {}),
-            ...(status === "failed" && w.failureReason ? { failureReason: w.failureReason } : {}),
-          };
-          const known = await db.withdrawal.findUnique({ where: { gatewayId: w.id }, select: { id: true } });
-          if (known) {
-            await db.withdrawal.update({ where: { id: known.id }, data });
-            continue;
-          }
-          // A Pagar.me pode devolver o mesmo saque com outro id (tr_ x wd_): casa pelo recebedor, valor e horário.
-          const twin = createdAt
-            ? await db.withdrawal.findFirst({
-                where: { recipientId: r.id, amountCents: w.amount, createdAt: { gte: new Date(createdAt.getTime() - 180_000), lte: new Date(createdAt.getTime() + 180_000) } },
-                select: { id: true },
-              })
-            : null;
-          if (twin) {
-            await db.withdrawal.update({ where: { id: twin.id }, data });
-            continue;
-          }
-          await db.withdrawal.create({
-            data: {
-              clientId: null,
-              recipientId: r.id,
-              recipientName: r.name,
-              amountCents: w.amount,
-              feeCents: w.fee ?? 0,
-              status,
-              gatewayId: w.id,
-              fundingEstimatedDate: w.fundingEstimatedDate ? new Date(w.fundingEstimatedDate) : null,
-              failureReason: status === "failed" ? w.failureReason : null,
-              ...(createdAt ? { createdAt } : {}),
-            },
-          });
-        }
-      }),
+          return [] as RemoteWithdrawal[];
+        }),
+      })),
     );
+    const all = lists.flatMap(({ r, remote }) => remote.map((w) => ({ r, w })));
+    if (all.length === 0) return;
+
+    const ids = all.map(({ w }) => w.id);
+    const known = await db.withdrawal.findMany({ where: { gatewayId: { in: ids } } });
+    const byId = new Map(known.map((k) => [k.gatewayId, k]));
+
+    // A Pagar.me pode devolver um saque criado pelo app com outro id (tr_ x with_): casa pelo recebedor, valor e horário.
+    const unknown = all.filter(({ w }) => !byId.has(w.id));
+    const times = unknown.map(({ w }) => (w.createdAt ? Date.parse(w.createdAt) : NaN)).filter(Number.isFinite);
+    const twins: Withdrawal[] =
+      times.length > 0
+        ? await db.withdrawal.findMany({
+            where: {
+              gatewayId: { notIn: ids },
+              recipientId: { in: [...new Set(unknown.map(({ r }) => r.id))] },
+              createdAt: { gte: new Date(Math.min(...times) - TWIN_WINDOW_MS), lte: new Date(Math.max(...times) + TWIN_WINDOW_MS) },
+            },
+          })
+        : [];
+
+    const creates: Prisma.WithdrawalCreateManyInput[] = [];
+    const updates: Promise<unknown>[] = [];
+    for (const { r, w } of all) {
+      const status = normalizeWithdrawalStatus(w.status);
+      const fee = w.fee ?? null;
+      const funding = w.fundingEstimatedDate ? new Date(w.fundingEstimatedDate) : null;
+      const failure = status === "failed" ? (w.failureReason ?? null) : null;
+      const createdAt = w.createdAt ? new Date(w.createdAt) : null;
+
+      let row = byId.get(w.id);
+      if (!row && createdAt) {
+        const i = twins.findIndex((c) => c.recipientId === r.id && c.amountCents === w.amount && Math.abs(c.createdAt.getTime() - createdAt.getTime()) <= TWIN_WINDOW_MS);
+        if (i >= 0) row = twins.splice(i, 1)[0];
+      }
+      if (row) {
+        const changed =
+          row.status !== status ||
+          (fee != null && row.feeCents !== fee) ||
+          (funding != null && row.fundingEstimatedDate?.getTime() !== funding.getTime()) ||
+          (failure != null && row.failureReason !== failure);
+        if (changed) {
+          updates.push(
+            db.withdrawal.update({
+              where: { id: row.id },
+              data: { status, ...(fee != null ? { feeCents: fee } : {}), ...(funding ? { fundingEstimatedDate: funding } : {}), ...(failure ? { failureReason: failure } : {}) },
+            }),
+          );
+        }
+        continue;
+      }
+      creates.push({
+        clientId: null,
+        recipientId: r.id,
+        recipientName: r.name,
+        amountCents: w.amount,
+        feeCents: fee ?? 0,
+        status,
+        gatewayId: w.id,
+        fundingEstimatedDate: funding,
+        failureReason: failure,
+        ...(createdAt ? { createdAt } : {}),
+      });
+    }
+    if (creates.length > 0) await db.withdrawal.createMany({ data: creates, skipDuplicates: true });
+    await Promise.all(updates);
   } catch (e) {
     console.error("[withdraw] sincronização com a Pagar.me falhou:", (e as Error).message);
   }
@@ -192,20 +192,12 @@ export function withdrawalScope(clientId: string | null) {
   return clientId ? { OR: [{ clientId }, { clientId: null }] } : {};
 }
 
-/**
- * Histórico de saques (do cliente ou, sem clientId, de toda a conta). Com `sync`, importa antes o que existe na
- * Pagar.me. Os que ainda não terminaram são reconsultados, no máximo uma vez por minuto cada.
- */
-export async function listWithdrawals(clientId: string | null, take = 50, sync = false): Promise<WithdrawalRow[]> {
-  if (sync) await syncWithdrawalsFromPagarme();
-  const items = await db.withdrawal.findMany({ where: withdrawalScope(clientId), orderBy: { createdAt: "desc" }, take, include: { client: { select: { name: true } } } });
-  const stale = items.filter((w) => !FINAL_WITHDRAWAL_STATUSES.includes(w.status as WithdrawalStatus) && Date.now() - w.updatedAt.getTime() > REFRESH_AFTER_MS).slice(0, 10);
-  if (stale.length === 0) return items;
-  const refreshed = await Promise.all(stale.map((w) => refreshWithdrawal(w).then((r) => ({ ...r, client: w.client })).catch(() => w)));
-  return items.map((w) => refreshed.find((r) => r.id === w.id) ?? w);
+/** Histórico de saques do banco (do cliente ou, sem clientId, de toda a conta). Sincronize antes com syncWithdrawalsFromPagarme. */
+export function listWithdrawals(clientId: string | null, take = 50): Promise<WithdrawalRow[]> {
+  return db.withdrawal.findMany({ where: withdrawalScope(clientId), orderBy: { createdAt: "desc" }, take, include: { client: { select: { name: true } } } });
 }
 
-export function serializeWithdrawal(w: WithdrawalRow) {
+export function serializeWithdrawal(w: WithdrawalRow): WithdrawalDTO {
   return {
     id: w.id,
     clientName: w.client?.name ?? null,
@@ -219,20 +211,4 @@ export function serializeWithdrawal(w: WithdrawalRow) {
     fundingEstimatedDate: w.fundingEstimatedDate?.toISOString() ?? null,
     failureReason: w.failureReason,
   };
-}
-
-export type WithdrawalDTO = ReturnType<typeof serializeWithdrawal>;
-
-export async function refreshWithdrawal(w: Withdrawal): Promise<Withdrawal> {
-  const remote = await getTransfer(w.recipientId, w.gatewayId, w.amountCents);
-  const status = normalizeWithdrawalStatus(remote.status);
-  return db.withdrawal.update({
-    where: { id: w.id },
-    data: {
-      status,
-      feeCents: remote.fee ?? w.feeCents,
-      fundingEstimatedDate: remote.fundingEstimatedDate ? new Date(remote.fundingEstimatedDate) : w.fundingEstimatedDate,
-      failureReason: status === "failed" ? (remote.failureReason ?? w.failureReason ?? "Recusado pela Pagar.me") : w.failureReason,
-    },
-  });
 }
