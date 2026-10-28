@@ -26,7 +26,6 @@ export default async function GerarPage() {
           defaultExpiryMin={client.defaultExpiryMin ?? Number(s.default_expiry_min)}
           minAmountCents={client.minAmountCents ?? Number(s.min_amount_cents)}
           allowExpiry={gateway !== "legacy"}
-          disablePayerInput={isTestMode}
           testMode={isTestMode}
         />
       </div>

@@ -16,7 +16,6 @@ export function ChargeForm({
   defaultExpiryMin,
   minAmountCents,
   allowExpiry = true,
-  disablePayerInput = false,
   testMode = false,
 }: {
   defaultPayer: Payer;
@@ -24,9 +23,7 @@ export function ChargeForm({
   minAmountCents: number;
   /** false quando a gateway define a validade do Pix sozinha (Legacy). */
   allowExpiry?: boolean;
-  /** Desabilita edição dos dados do pagador (modo teste). */
-  disablePayerInput?: boolean;
-  /** Modo teste — usa pool de teste obrigatoriamente. */
+  /** Modo teste — usa pool de teste obrigatoriamente e desabilita edição de dados. */
   testMode?: boolean;
 }) {
   const router = useRouter();
