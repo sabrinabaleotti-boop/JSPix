@@ -14,6 +14,9 @@ export default async function GerarPage() {
   const client = await db.client.findUniqueOrThrow({ where: { id: clientId } });
   const [s, gateway] = await Promise.all([getSettings(["default_expiry_min", "min_amount_cents"]), getEffectiveGateway()]);
 
+  // Em modo teste (simulated), usa pool de teste obrigatoriamente
+  const isTestMode = gateway === "simulated";
+
   return (
     <div className="mx-auto max-w-xl space-y-5">
       <PageHeader eyebrow="Nova cobrança" title="Gerar Pix" description="Informe o valor. O QR Code fica pronto em segundos." />
@@ -23,6 +26,8 @@ export default async function GerarPage() {
           defaultExpiryMin={client.defaultExpiryMin ?? Number(s.default_expiry_min)}
           minAmountCents={client.minAmountCents ?? Number(s.min_amount_cents)}
           allowExpiry={gateway !== "legacy"}
+          disablePayerInput={isTestMode}
+          testMode={isTestMode}
         />
       </div>
     </div>

@@ -16,12 +16,18 @@ export function ChargeForm({
   defaultExpiryMin,
   minAmountCents,
   allowExpiry = true,
+  disablePayerInput = false,
+  testMode = false,
 }: {
   defaultPayer: Payer;
   defaultExpiryMin: number;
   minAmountCents: number;
   /** false quando a gateway define a validade do Pix sozinha (Legacy). */
   allowExpiry?: boolean;
+  /** Desabilita edição dos dados do pagador (modo teste). */
+  disablePayerInput?: boolean;
+  /** Modo teste — usa pool de teste obrigatoriamente. */
+  testMode?: boolean;
 }) {
   const router = useRouter();
   const [cents, setCents] = useState(0);
@@ -37,6 +43,8 @@ export function ChargeForm({
   const [loading, setLoading] = useState(false);
 
   const cpfOk = isValidCpf(payer.cpf);
+  // Em modo teste, não permite edição — usa pool obrigatoriamente
+  const canEdit = !disablePayerInput;
   const canSubmit = cents >= minAmountCents && (!editPayer || (cpfOk && payer.name.trim().length >= 3)) && !loading;
 
   async function submit(e: React.FormEvent) {
@@ -50,7 +58,8 @@ export function ChargeForm({
         amountCents: cents,
         description,
         expiresInMin: expiry,
-        payer: editPayer ? { ...payer, cpf: onlyDigits(payer.cpf), phone: onlyDigits(payer.phone) } : undefined,
+        // Em modo teste, nunca envia dados — a API usa pool obrigatoriamente
+        payer: testMode ? undefined : (editPayer ? { ...payer, cpf: onlyDigits(payer.cpf), phone: onlyDigits(payer.phone) } : undefined),
       }),
     }).catch(() => null);
     if (!res) {
@@ -142,19 +151,23 @@ export function ChargeForm({
           <div>
             <CardTitle>Pagador</CardTitle>
             <CardDescription>
-              {editPayer
-                ? "Edite os dados que irão na cobrança."
-                : payer.name
-                  ? `${payer.name} · CPF ${hideCpf(payer.cpf)}`
-                  : "Preenchido automaticamente a cada cobrança."}
+              {testMode
+                ? "Dados preenchidos automaticamente (modo teste)."
+                : editPayer
+                  ? "Edite os dados que irão na cobrança."
+                  : payer.name
+                    ? `${payer.name} · CPF ${hideCpf(payer.cpf)}`
+                    : "Preenchido automaticamente a cada cobrança."}
             </CardDescription>
           </div>
-          <Button type="button" variant="outline" size="sm" onClick={() => setEditPayer((v) => !v)}>
-            {editPayer ? <ChevronDown className="h-4 w-4" /> : <Pencil className="h-3.5 w-3.5" />}
-            {editPayer ? "Recolher" : "Editar dados"}
-          </Button>
+          {!testMode && (
+            <Button type="button" variant="outline" size="sm" onClick={() => setEditPayer((v) => !v)}>
+              {editPayer ? <ChevronDown className="h-4 w-4" /> : <Pencil className="h-3.5 w-3.5" />}
+              {editPayer ? "Recolher" : "Editar dados"}
+            </Button>
+          )}
         </CardHeader>
-        {editPayer && (
+        {editPayer && !testMode && (
           <CardContent className="grid gap-4 sm:grid-cols-2">
             <div className="sm:col-span-2">
               <Label htmlFor="pname">Nome completo</Label>
