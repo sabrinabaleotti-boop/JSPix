@@ -9,7 +9,7 @@ import { createPix, GatewayInputError } from "@/lib/gateway";
 import { payerIpv4, publicBaseUrl } from "@/lib/request-info";
 import { serializeCharge } from "@/lib/charges";
 import { resolveSplit } from "@/lib/split";
-import { getNextTestPayerForClient } from "@/lib/test-pool-rotation";
+
 import { Prisma } from "@prisma/client";
 
 export async function POST(req: Request) {
@@ -19,7 +19,7 @@ export async function POST(req: Request) {
   // Em paralelo: o banco fica longe do servidor e cada consulta em sequência soma uma viagem.
   const [client, settings, body] = await Promise.all([
     db.client.findUnique({ where: { id: clientId } }),
-    getSettings(["fee_percent", "fee_fixed_cents", "default_expiry_min", "min_amount_cents", "max_amount_cents"]),
+    getSettings(["fee_percent", "fee_fixed_cents", "default_expiry_min", "min_amount_cents", "max_amount_cents", "gateway"]),
     req.json().catch(() => ({})),
   ]);
   if (!client || !client.active) return NextResponse.json({ error: "Cliente inativo" }, { status: 403 });
@@ -37,19 +37,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: `Valor máximo é ${(maxAmount / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}` }, { status: 400 });
   }
 
-  // Se nenhum pagador foi fornecido e o cliente não tem dados salvos, usa a pool de testes
-  let usedTestPool = false;
+  // Exige dados do pagador ou dados cadastrados — sem pool de teste
   let payer;
 
   if (!body.payer && (!client.payerName || !client.payerCpf)) {
-    const testPayer = await getNextTestPayerForClient(clientId);
-    payer = {
-      name: testPayer.nome,
-      cpf: testPayer.cpf.replace(/\D/g, ""),
-      email: testPayer.email,
-      phone: testPayer.phone,
-    };
-    usedTestPool = true;
+    return NextResponse.json({ error: "Forneça os dados do pagador (nome, CPF, e-mail, telefone) ou cadastre-os nas configurações" }, { status: 400 });
   } else {
     payer = {
       name: String(body.payer?.name ?? client.payerName).trim(),
@@ -63,6 +55,11 @@ export async function POST(req: Request) {
   if (!isValidCpf(payer.cpf)) return NextResponse.json({ error: "CPF inválido" }, { status: 400 });
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(payer.email)) return NextResponse.json({ error: "E-mail inválido" }, { status: 400 });
   if (payer.phone.length < 10 || payer.phone.length > 11) return NextResponse.json({ error: "Telefone inválido" }, { status: 400 });
+
+  // Verifica se o gateway está configurado
+  if (!settings.gateway || settings.gateway === "simulated") {
+    return NextResponse.json({ error: "Gateway não está configurado. Configure a Pagar.me ou Legacy nas configurações." }, { status: 503 });
+  }
 
   const allowedExpiry = [15, 30, 60, 1440];
   const expiry = allowedExpiry.includes(expiresInMin) ? expiresInMin : client.defaultExpiryMin ?? Number(settings.default_expiry_min);
