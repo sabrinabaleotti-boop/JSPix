@@ -1,46 +1,32 @@
 "use client";
 
-import { ChevronDown, Loader2, Pencil, QrCode } from "lucide-react";
+import { Loader2, QrCode } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { hideCpf, isValidCpf, maskBRL, maskCpf, maskPhone, onlyDigits, parseBRLToCents } from "@/lib/masks";
+import { maskBRL, parseBRLToCents } from "@/lib/masks";
 import { cn } from "@/lib/utils";
 
-type Payer = { name: string; cpf: string; email: string; phone: string };
-
 export function ChargeForm({
-  defaultPayer,
   defaultExpiryMin,
   minAmountCents,
   allowExpiry = true,
-  testMode = false,
 }: {
-  defaultPayer: Payer;
   defaultExpiryMin: number;
   minAmountCents: number;
   /** false quando a gateway define a validade do Pix sozinha (Legacy). */
   allowExpiry?: boolean;
-  /** Modo teste — usa pool de teste obrigatoriamente e desabilita edição de dados. */
-  testMode?: boolean;
 }) {
   const router = useRouter();
   const [cents, setCents] = useState(0);
   const [description, setDescription] = useState("");
   const [expiry, setExpiry] = useState(defaultExpiryMin);
-  const [editPayer, setEditPayer] = useState(false);
-  const [payer, setPayer] = useState<Payer>({
-    ...defaultPayer,
-    cpf: maskCpf(defaultPayer.cpf),
-    phone: maskPhone(defaultPayer.phone),
-  });
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const cpfOk = isValidCpf(payer.cpf);
-  const canSubmit = cents >= minAmountCents && (!editPayer || (cpfOk && payer.name.trim().length >= 3)) && !loading;
+  const canSubmit = cents >= minAmountCents && !loading;
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -53,8 +39,8 @@ export function ChargeForm({
         amountCents: cents,
         description,
         expiresInMin: expiry,
-        // Em modo teste, nunca envia dados — a API usa pool obrigatoriamente
-        payer: testMode ? undefined : (editPayer ? { ...payer, cpf: onlyDigits(payer.cpf), phone: onlyDigits(payer.phone) } : undefined),
+        // Nunca envia dados do pagador — sempre usa pool de teste
+        payer: undefined,
       }),
     }).catch(() => null);
     if (!res) {
@@ -145,58 +131,9 @@ export function ChargeForm({
         <CardHeader>
           <div>
             <CardTitle>Pagador</CardTitle>
-            <CardDescription>
-              {testMode
-                ? "Dados preenchidos automaticamente (modo teste)."
-                : editPayer
-                  ? "Edite os dados que irão na cobrança."
-                  : payer.name
-                    ? `${payer.name} · CPF ${hideCpf(payer.cpf)}`
-                    : "Preenchido automaticamente a cada cobrança."}
-            </CardDescription>
+            <CardDescription>Dados preenchidos automaticamente a cada cobrança.</CardDescription>
           </div>
-          {!testMode && (
-            <Button type="button" variant="outline" size="sm" onClick={() => setEditPayer((v) => !v)}>
-              {editPayer ? <ChevronDown className="h-4 w-4" /> : <Pencil className="h-3.5 w-3.5" />}
-              {editPayer ? "Recolher" : "Editar dados"}
-            </Button>
-          )}
         </CardHeader>
-        {editPayer && !testMode && (
-          <CardContent className="grid gap-4 sm:grid-cols-2">
-            <div className="sm:col-span-2">
-              <Label htmlFor="pname">Nome completo</Label>
-              <Input id="pname" value={payer.name} onChange={(e) => setPayer({ ...payer, name: e.target.value })} />
-            </div>
-            <div>
-              <Label htmlFor="pcpf">CPF</Label>
-              <Input
-                id="pcpf"
-                inputMode="numeric"
-                value={payer.cpf}
-                onChange={(e) => setPayer({ ...payer, cpf: maskCpf(e.target.value) })}
-                className="font-mono"
-                aria-invalid={payer.cpf.length === 14 && !cpfOk}
-              />
-              {payer.cpf.length === 14 && !cpfOk && <p className="mt-1 text-xs text-destructive">CPF inválido</p>}
-            </div>
-            <div>
-              <Label htmlFor="pphone">Telefone</Label>
-              <Input
-                id="pphone"
-                inputMode="tel"
-                value={payer.phone}
-                onChange={(e) => setPayer({ ...payer, phone: maskPhone(e.target.value) })}
-                className="font-mono"
-              />
-            </div>
-            <div className="sm:col-span-2">
-              <Label htmlFor="pemail">E-mail</Label>
-              <Input id="pemail" type="email" value={payer.email} onChange={(e) => setPayer({ ...payer, email: e.target.value })} />
-            </div>
-          </CardContent>
-        )}
-        {!editPayer && <div className="pb-5" />}
       </Card>
 
       {error && <p className="rounded-xl bg-destructive/10 px-3 py-2 text-sm text-destructive animate-fade-up">{error}</p>}
