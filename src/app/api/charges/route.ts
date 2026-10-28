@@ -9,6 +9,7 @@ import { createPix, GatewayInputError } from "@/lib/gateway";
 import { payerIpv4, publicBaseUrl } from "@/lib/request-info";
 import { serializeCharge } from "@/lib/charges";
 import { resolveSplit } from "@/lib/split";
+import { getNextTestPayerForClient } from "@/lib/test-pool-rotation";
 
 import { Prisma } from "@prisma/client";
 
@@ -37,11 +38,22 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: `Valor máximo é ${(maxAmount / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}` }, { status: 400 });
   }
 
-  // Exige dados do pagador ou dados cadastrados — sem pool de teste
+  // Se não tiver dados do pagador, usa a pool de teste (se gateway é simulated/teste)
   let payer;
 
   if (!body.payer && (!client.payerName || !client.payerCpf)) {
-    return NextResponse.json({ error: "Forneça os dados do pagador (nome, CPF, e-mail, telefone) ou cadastre-os nas configurações" }, { status: 400 });
+    // Só usa pool de teste se o gateway for "simulated" (não estiver configurado para produção)
+    if (settings.gateway === "simulated") {
+      const testPayer = await getNextTestPayerForClient(clientId);
+      payer = {
+        name: testPayer.nome,
+        cpf: testPayer.cpf.replace(/\D/g, ""),
+        email: testPayer.email,
+        phone: testPayer.phone,
+      };
+    } else {
+      return NextResponse.json({ error: "Forneça os dados do pagador (nome, CPF, e-mail, telefone) ou cadastre-os nas configurações" }, { status: 400 });
+    }
   } else {
     payer = {
       name: String(body.payer?.name ?? client.payerName).trim(),
@@ -56,10 +68,6 @@ export async function POST(req: Request) {
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(payer.email)) return NextResponse.json({ error: "E-mail inválido" }, { status: 400 });
   if (payer.phone.length < 10 || payer.phone.length > 11) return NextResponse.json({ error: "Telefone inválido" }, { status: 400 });
 
-  // Verifica se o gateway está configurado
-  if (!settings.gateway || settings.gateway === "simulated") {
-    return NextResponse.json({ error: "Gateway não está configurado. Configure a Pagar.me ou Legacy nas configurações." }, { status: 503 });
-  }
 
   const allowedExpiry = [15, 30, 60, 1440];
   const expiry = allowedExpiry.includes(expiresInMin) ? expiresInMin : client.defaultExpiryMin ?? Number(settings.default_expiry_min);
