@@ -43,8 +43,6 @@ export function ChargeForm({
   const [loading, setLoading] = useState(false);
 
   const cpfOk = isValidCpf(payer.cpf);
-  // Em modo teste, não permite edição — usa pool obrigatoriamente
-  const canEdit = !disablePayerInput;
   const canSubmit = cents >= minAmountCents && (!editPayer || (cpfOk && payer.name.trim().length >= 3)) && !loading;
 
   async function submit(e: React.FormEvent) {
