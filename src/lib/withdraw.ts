@@ -208,9 +208,15 @@ export function withdrawalScope(clientId: string | null) {
   return clientId ? { OR: [{ clientId }, { clientId: null }] } : {};
 }
 
-/** Histórico de saques do banco (do cliente ou, sem clientId, de toda a conta). Sincronize antes com syncWithdrawalsFromPagarme. */
-export function listWithdrawals(clientId: string | null, take = 50): Promise<WithdrawalRow[]> {
-  return db.withdrawal.findMany({ where: withdrawalScope(clientId), orderBy: { createdAt: "desc" }, take, include: { client: { select: { name: true } } } });
+/** Histórico de saques do banco. Filtra pelo recebedor responsável do split quando informado. */
+export function listWithdrawals(clientId: string | null, opts: { take?: number; recipientId?: string | null } = {}): Promise<WithdrawalRow[]> {
+  const { take = 50, recipientId } = opts;
+  return db.withdrawal.findMany({
+    where: { ...withdrawalScope(clientId), ...(recipientId ? { recipientId } : {}) },
+    orderBy: { createdAt: "desc" },
+    take,
+    include: { client: { select: { name: true } } },
+  });
 }
 
 export function serializeWithdrawal(w: WithdrawalRow): WithdrawalDTO {

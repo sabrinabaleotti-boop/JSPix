@@ -9,6 +9,7 @@ import { WithdrawalHistory } from "@/components/withdrawal-history";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { getClientId } from "@/lib/auth";
 import { getSecretKey } from "@/lib/pagarme";
+import { getSplitDefault } from "@/lib/split";
 import { getWithdrawFee, listWithdrawals, loadWithdrawRecipients, serializeWithdrawal, syncWithdrawalsFromPagarme } from "@/lib/withdraw";
 import { clientWithdrawAction } from "@/app/app/actions";
 
@@ -66,7 +67,9 @@ async function Recipients() {
 
 async function HistoryCard({ clientId }: { clientId: string }) {
   if (await getSecretKey()) await syncWithdrawalsFromPagarme();
-  const withdrawals = await listWithdrawals(clientId);
+  const splitDefault = await getSplitDefault();
+  const responsibleId = splitDefault.enabled ? splitDefault.rules.find((r) => r.responsible)?.recipientId : null;
+  const withdrawals = await listWithdrawals(clientId, { recipientId: responsibleId });
   const inProgress = withdrawals.filter((w) => w.status === "pending_transfer" || w.status === "processing").length;
   return (
     <Card id="historico" className="min-w-0 scroll-mt-24 animate-fade-up">

@@ -62,7 +62,7 @@ async function Recipients() {
 
 async function HistoryCard() {
   await syncWithdrawalsFromPagarme();
-  const withdrawals = await listWithdrawals(null, 100);
+  const withdrawals = await listWithdrawals(null, { take: 100 });
   return (
     <Card className="min-w-0 animate-fade-up">
       <CardHeader className="items-center">
