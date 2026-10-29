@@ -8,6 +8,7 @@ const tabs = [
   { href: "/admin/configuracoes/gateway", label: "Gateway" },
   { href: "/admin/configuracoes/recebedores", label: "Recebedores" },
   { href: "/admin/configuracoes/split", label: "Split" },
+  { href: "/admin/configuracoes/transferencia-automatica", label: "Auto-saque" },
   { href: "/admin/configuracoes/webhook", label: "Webhook" },
   { href: "/admin/configuracoes/taxas", label: "Taxas" },
   { href: "/admin/configuracoes/seguranca", label: "Segurança" },

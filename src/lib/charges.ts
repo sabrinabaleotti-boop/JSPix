@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { tryAutoTransfer } from "@/lib/auto-transfer";
 import { fetchRemoteState } from "@/lib/gateway";
 import { getSetting } from "@/lib/settings";
 import { notifyChargePaid } from "@/lib/push";
@@ -43,6 +44,7 @@ export async function markPaid(chargeId: string, paidAt: Date, gatewayFeeCents?:
   const fee = gatewayFeeCents ?? Math.round((c.amountCents * Number(await getSetting("gateway_fee_percent"))) / 100);
   const paid = await db.charge.update({ where: { id: chargeId }, data: { status: "paid", paidAt, ourFeeCents, gatewayFeeCents: c.gateway === "simulated" ? 0 : fee } });
   await notifyChargePaid(chargeId);
+  tryAutoTransfer(chargeId).catch(() => {});
   return paid;
 }
 

@@ -1,6 +1,6 @@
 import type { Charge, ChargeStatus } from "@prisma/client";
 import { getSetting } from "@/lib/settings";
-import { cancelPagarmeCharge, createPixOrder, getOrder, getSecretKey as getPagarmeKey } from "@/lib/pagarme";
+import { cancelPagarmeCharge, createPixOrder, getOrder, getSecretKey as getPagarmeKey, listRecipientsCached } from "@/lib/pagarme";
 import { toPagarmeSplit, type SplitRule } from "@/lib/split";
 import { createLegacyPix, getLegacyCredentials, getLegacyPayin, getLegacyWebhookToken, type LegacyAddress, type LegacyPayinStatus } from "@/lib/legacy";
 
@@ -73,6 +73,18 @@ export async function createPix(input: CreatePixInput): Promise<CreatePixResult>
   }
 
   if (gateway === "pagarme") {
+    if (input.split) {
+      const responsible = input.split.find((r) => r.responsible);
+      if (responsible) {
+        const recipients = await listRecipientsCached();
+        const rec = recipients.find((r) => r.id === responsible.recipientId);
+        if (rec && rec.status !== "active") {
+          throw new GatewayInputError(
+            `Geração de Pix bloqueada: a conta Pagar.me do recebedor "${rec.name}" está com status "${rec.status}". Verifique a situação da conta no painel da Pagar.me.`,
+          );
+        }
+      }
+    }
     const r = await createPixOrder({ ...input, payer: input.payer, split: input.split ? toPagarmeSplit(input.split) : undefined });
     return { gateway, gatewayId: r.orderId, gatewayChargeId: r.chargeId, qrCode: r.qrCode, qrCodeUrl: r.qrCodeUrl, expiresAt: r.expiresAt, splitRules: input.split };
   }

@@ -9,6 +9,8 @@ const defaults: Record<string, string> = {
   gateway_fee_percent: "1.19",
   // Exemplo de tarifa por transferência da doc da Pagar.me; o valor real é o do contrato da conta.
   withdraw_fee_cents: "367",
+  auto_transfer_enabled: "false",
+  auto_transfer_reserve_cents: "500",
 };
 
 // O banco fica em São Paulo e o servidor nos EUA: cada leitura custa ~0,2 s. As configurações mudam pouco,

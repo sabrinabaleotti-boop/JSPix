@@ -448,6 +448,19 @@ export async function reprocessWebhookEvent(id: string) {
   revalidatePath("/admin/configuracoes/webhook");
 }
 
+// ---------- Transferência automática ----------
+
+export async function saveAutoTransfer(_: FormState, fd: FormData): Promise<FormState> {
+  await requireAdmin();
+  const enabled = fd.get("enabled") === "on";
+  const reserveStr = str(fd, "reserve");
+  const reserveCents = parseMoneyToCents(reserveStr || "5");
+  if (!Number.isFinite(reserveCents) || reserveCents < 0) return { error: "Valor de reserva inválido" };
+  await Promise.all([setSetting("auto_transfer_enabled", enabled ? "true" : "false"), setSetting("auto_transfer_reserve_cents", String(reserveCents))]);
+  revalidatePath("/admin/configuracoes/transferencia-automatica");
+  return { ok: enabled ? "Transferência automática ativada." : "Transferência automática desativada." };
+}
+
 export async function saveFees(_: FormState, fd: FormData): Promise<FormState> {
   await requireAdmin();
   const fee = parsePercent(str(fd, "feePercent"));
