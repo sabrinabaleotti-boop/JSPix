@@ -14,7 +14,7 @@ export function PageHeader({
   className?: string;
 }) {
   return (
-    <div className={cn("flex flex-col gap-3 animate-fade-up sm:flex-row sm:items-end sm:justify-between", className)}>
+    <div className={cn("relative z-30 flex flex-col gap-3 animate-fade-up sm:flex-row sm:items-end sm:justify-between", className)}>
       <div className="min-w-0">
         {eyebrow && <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-primary">{eyebrow}</p>}
         <h1 className="text-2xl font-bold tracking-tight">{title}</h1>

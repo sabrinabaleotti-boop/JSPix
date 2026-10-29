@@ -1,59 +1,68 @@
+import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { ArrowRight, Banknote, Calendar, DollarSign, Percent, QrCode, Target, Wallet } from "lucide-react";
 import Link from "next/link";
 import { ChargeList } from "@/components/charge-list";
 import { CountUp } from "@/components/count-up";
 import { PageHeader } from "@/components/admin/page-header";
+import { PeriodSelector, periodLabel } from "@/components/period-selector";
 import { StatCard } from "@/components/stat-card";
 import { WithdrawalHistory } from "@/components/withdrawal-history";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { getClientId } from "@/lib/auth";
-import { gatewayFeeOf, periodBounds, serializeCharge } from "@/lib/charges";
+import { gatewayFeeOf, periodFromParam, serializeCharge } from "@/lib/charges";
 import { db } from "@/lib/db";
+import { getSplitDefault } from "@/lib/split";
 import { serializeWithdrawal, withdrawalScope } from "@/lib/withdraw";
 import { formatBRL } from "@/lib/utils";
 import { getSetting } from "@/lib/settings";
 
 const COUNTED_WITHDRAWALS = { notIn: ["failed", "canceled"] };
 
-export default async function AppHome() {
+export default async function AppHome({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const clientId = await getClientId();
   if (!clientId) redirect("/");
-  const { since, prevSince } = periodBounds(7);
+  const sp = await searchParams;
+  const periodoKey = typeof sp.periodo === "string" ? sp.periodo : undefined;
+  const { since, prevSince, label: periodLbl, days } = periodFromParam(periodoKey);
 
-  // expira pendentes vencidas antes de contar
   await db.charge.updateMany({ where: { clientId, status: "pending", expiresAt: { lt: new Date() } }, data: { status: "expired" } });
 
-  const [period, prev, paidAll, recent, client, withdrawals, withdrawnAll, withdrawn7d, gwPercent] = await Promise.all([
-    db.charge.findMany({ where: { clientId, createdAt: { gte: since } } }),
-    db.charge.findMany({ where: { clientId, createdAt: { gte: prevSince, lt: since }, status: "paid" } }),
-    db.charge.findMany({ where: { clientId, status: "paid" }, select: { amountCents: true, gatewayFeeCents: true } }),
+  const periodWhere = days > 0 ? { createdAt: { gte: since } } : {};
+  const prevWhere = days > 0 ? { createdAt: { gte: prevSince, lt: since } } : {};
+
+  const [period, prev, recent, client, gwPercent, splitDefault] = await Promise.all([
+    db.charge.findMany({ where: { clientId, ...periodWhere } }),
+    days > 0 ? db.charge.findMany({ where: { clientId, ...prevWhere, status: "paid" } }) : Promise.resolve([]),
     db.charge.findMany({ where: { clientId }, orderBy: { createdAt: "desc" }, take: 6 }),
     db.client.findUnique({ where: { id: clientId }, select: { name: true } }),
-    db.withdrawal.findMany({ where: withdrawalScope(clientId), orderBy: { createdAt: "desc" }, take: 3, include: { client: { select: { name: true } } } }),
-    db.withdrawal.aggregate({ where: { ...withdrawalScope(clientId), status: COUNTED_WITHDRAWALS }, _sum: { amountCents: true } }),
-    db.withdrawal.aggregate({ where: { ...withdrawalScope(clientId), status: COUNTED_WITHDRAWALS, createdAt: { gte: since } }, _sum: { amountCents: true } }),
     getSetting("gateway_fee_percent"),
+    getSplitDefault(),
+  ]);
+
+  const responsibleId = splitDefault.enabled ? splitDefault.rules.find((r) => r.responsible)?.recipientId : null;
+  const withdrawalWhere = {
+    ...withdrawalScope(clientId),
+    ...(responsibleId ? { recipientId: responsibleId } : {}),
+  };
+
+  const [withdrawals, withdrawnPeriod] = await Promise.all([
+    db.withdrawal.findMany({ where: withdrawalWhere, orderBy: { createdAt: "desc" }, take: 3, include: { client: { select: { name: true } } } }),
+    db.withdrawal.aggregate({ where: { ...withdrawalWhere, status: COUNTED_WITHDRAWALS, ...(days > 0 ? { createdAt: { gte: since } } : {}) }, _sum: { amountCents: true } }),
   ]);
 
   const gw = Number(gwPercent) || 0;
   const gwLabel = `${gw.toFixed(2).replace(".", ",")}%`;
   const firstName = client?.name.split(/\s+/)[0] ?? "";
 
-  // Totais de sempre: o que entrou de fato na conta é o pago menos a taxa da Pagar.me.
-  const grossAll = paidAll.reduce((s, c) => s + c.amountCents, 0);
-  const gwFeeAll = paidAll.reduce((s, c) => s + gatewayFeeOf(c, gw), 0);
-  const netAll = grossAll - gwFeeAll;
-  const sacadoAll = withdrawnAll._sum.amountCents ?? 0;
-
-  // Últimos 7 dias
   const paid = period.filter((c) => c.status === "paid");
   const gross = paid.reduce((s, c) => s + c.amountCents, 0);
   const gwFee = paid.reduce((s, c) => s + gatewayFeeOf(c, gw), 0);
+  const net = gross - gwFee;
   const prevGross = prev.reduce((s, c) => s + c.amountCents, 0);
-  const delta = prevGross > 0 ? ((gross - prevGross) / prevGross) * 100 : gross > 0 ? 100 : 0;
-  const sacado7d = withdrawn7d._sum.amountCents ?? 0;
+  const delta = days > 0 && prevGross > 0 ? ((gross - prevGross) / prevGross) * 100 : gross > 0 && days > 0 ? 100 : undefined;
+  const sacadoPeriod = withdrawnPeriod._sum.amountCents ?? 0;
 
   const count = (s: string) => period.filter((c) => c.status === s).length;
   const dist = [
@@ -68,12 +77,17 @@ export default async function AppHome() {
 
   return (
     <div className="mx-auto max-w-7xl space-y-5">
-      <PageHeader eyebrow="Painel" title={firstName ? `Olá, ${firstName}` : "Visão geral"} description="Acompanhe cobranças, pagamentos e saques dos últimos 7 dias.">
-        <Link href="/app/gerar" className="hidden sm:block">
-          <Button className="h-10">
-            <QrCode className="h-4 w-4" /> Gerar Pix
-          </Button>
-        </Link>
+      <PageHeader eyebrow="Painel" title={firstName ? `Olá, ${firstName}` : "Visão geral"} description={`Acompanhe cobranças, pagamentos e saques.`}>
+        <div className="flex items-center gap-3">
+          <Suspense>
+            <PeriodSelector />
+          </Suspense>
+          <Link href="/app/gerar" className="hidden sm:block">
+            <Button className="h-10">
+              <QrCode className="h-4 w-4" /> Gerar Pix
+            </Button>
+          </Link>
+        </div>
       </PageHeader>
 
       <div className="stagger space-y-5">
@@ -85,13 +99,13 @@ export default async function AppHome() {
                   <span className="grid h-7 w-7 place-items-center rounded-lg bg-white/18 ring-1 ring-white/25">
                     <Wallet className="h-4 w-4" />
                   </span>
-                  Saldo recebido
+                  Faturamento · {periodLbl.toLowerCase()}
                 </p>
                 <p className="mt-3 text-[40px] font-bold leading-none tracking-tight tabular drop-shadow-sm sm:text-[46px]">
-                  <CountUp value={netAll} format="brl" duration={1100} />
+                  <CountUp value={net} format="brl" duration={1100} />
                 </p>
                 <p className="mt-2 text-xs text-white/75">
-                  {formatBRL(grossAll)} em Pix pagos · taxa Pagar.me ({gwLabel}) − {formatBRL(gwFeeAll)}
+                  {formatBRL(gross)} bruto · taxa Pagar.me ({gwLabel}) − {formatBRL(gwFee)}
                 </p>
               </div>
               <div className="flex shrink-0 gap-2">
@@ -109,10 +123,10 @@ export default async function AppHome() {
             </div>
             <div className="mt-6 flex flex-wrap gap-2 text-[11px] font-medium">
               <span className="flex items-center gap-1.5 rounded-full bg-white/14 px-2.5 py-1 ring-1 ring-white/20">
-                <Banknote className="h-3 w-3" /> {formatBRL(sacadoAll)} sacados
+                <Banknote className="h-3 w-3" /> {formatBRL(sacadoPeriod)} sacados
               </span>
               <span className="rounded-full bg-white/14 px-2.5 py-1 ring-1 ring-white/20">
-                {paid.length} pagamento{paid.length === 1 ? "" : "s"} em 7 dias
+                {paid.length} pagamento{paid.length === 1 ? "" : "s"}
               </span>
               {pendingNow > 0 && (
                 <span className="flex items-center gap-1.5 rounded-full bg-white/14 px-2.5 py-1 ring-1 ring-white/20">
@@ -128,9 +142,9 @@ export default async function AppHome() {
         </Card>
 
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <StatCard title="Pix pagos" subtitle="Valor pago · 7 dias" cents={gross} delta={delta} icon={DollarSign} />
-          <StatCard title="Taxa Pagar.me" subtitle={`${gwLabel} descontado por Pix · 7 dias`} cents={gwFee} icon={Percent} />
-          <StatCard title="Sacado" subtitle="Transferido para a conta · 7 dias" cents={sacado7d} icon={Banknote} />
+          <StatCard title="Pix pagos" subtitle={`Valor pago · ${periodLbl.toLowerCase()}`} cents={gross} delta={delta} icon={DollarSign} />
+          <StatCard title="Taxa Pagar.me" subtitle={`${gwLabel} descontado por Pix`} cents={gwFee} icon={Percent} />
+          <StatCard title="Sacado" subtitle={`Transferido · ${periodLbl.toLowerCase()}`} cents={sacadoPeriod} icon={Banknote} />
           <StatCard title="Conversão" subtitle="Cobranças que foram pagas" value={`${conv}%`} icon={Target} />
         </div>
 
@@ -152,7 +166,7 @@ export default async function AppHome() {
             </CardContent>
             <CardFooter>
               <span className="flex items-center gap-1.5 text-muted-foreground">
-                <Calendar className="h-3.5 w-3.5" /> Últimos 7 dias
+                <Calendar className="h-3.5 w-3.5" /> {periodLbl}
               </span>
               <Link href="/app/historico" className="flex items-center gap-1 font-semibold text-primary hover:underline">
                 Ver histórico completo <ArrowRight className="h-3.5 w-3.5" />
@@ -165,7 +179,7 @@ export default async function AppHome() {
               <CardHeader>
                 <div>
                   <CardTitle>Status das cobranças</CardTitle>
-                  <CardDescription>Distribuição nos últimos 7 dias.</CardDescription>
+                  <CardDescription>Distribuição · {periodLbl.toLowerCase()}.</CardDescription>
                 </div>
               </CardHeader>
               <CardContent className="space-y-4 pt-4">
@@ -189,8 +203,8 @@ export default async function AppHome() {
                     <p className="mt-1 text-lg font-bold tabular">{formatBRL(ticket)}</p>
                   </div>
                   <div className="rounded-xl bg-muted/60 p-3">
-                    <p className="text-[11px] text-muted-foreground">Líquido · 7 dias</p>
-                    <p className="mt-1 text-lg font-bold tabular">{formatBRL(gross - gwFee)}</p>
+                    <p className="text-[11px] text-muted-foreground">Líquido</p>
+                    <p className="mt-1 text-lg font-bold tabular">{formatBRL(net)}</p>
                   </div>
                 </div>
               </CardContent>

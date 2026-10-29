@@ -79,3 +79,29 @@ export function periodBounds(days: number) {
   const now = Date.now();
   return { since: new Date(now - days * 86400000), prevSince: new Date(now - 2 * days * 86400000) };
 }
+
+/** Converte a chave do seletor de período em datas. */
+export function periodFromParam(key: string | null | undefined): { since: Date; prevSince: Date; label: string; days: number } {
+  const now = new Date();
+  const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const ms = (d: number) => d * 86400000;
+
+  switch (key) {
+    case "hoje":
+      return { since: startOfDay, prevSince: new Date(startOfDay.getTime() - ms(1)), label: "Hoje", days: 1 };
+    case "ontem": {
+      const yesterday = new Date(startOfDay.getTime() - ms(1));
+      return { since: yesterday, prevSince: new Date(yesterday.getTime() - ms(1)), label: "Ontem", days: 1 };
+    }
+    case "30d":
+      return { since: new Date(now.getTime() - ms(30)), prevSince: new Date(now.getTime() - ms(60)), label: "Últimos 30 dias", days: 30 };
+    case "6m":
+      return { since: new Date(now.getTime() - ms(180)), prevSince: new Date(now.getTime() - ms(360)), label: "Últimos 6 meses", days: 180 };
+    case "1a":
+      return { since: new Date(now.getTime() - ms(365)), prevSince: new Date(now.getTime() - ms(730)), label: "Último ano", days: 365 };
+    case "tudo":
+      return { since: new Date(0), prevSince: new Date(0), label: "Todo o período", days: 0 };
+    default:
+      return { since: new Date(now.getTime() - ms(7)), prevSince: new Date(now.getTime() - ms(14)), label: "Últimos 7 dias", days: 7 };
+  }
+}
